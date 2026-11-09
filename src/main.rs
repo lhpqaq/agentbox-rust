@@ -1,3 +1,5 @@
+mod attach;
+
 use agentbox::{
     config,
     rpc::{self, RpcClient},
@@ -36,6 +38,15 @@ enum Commands {
     Token,
     Status,
     Sessions,
+    /// Share a native terminal; omit SESSION_ID to create a new shell. Ctrl-] detaches.
+    Attach {
+        session_id: Option<String>,
+        #[arg(long)]
+        cwd: Option<PathBuf>,
+        /// Show only new output instead of replaying retained terminal output.
+        #[arg(long)]
+        no_replay: bool,
+    },
     Create {
         #[arg(default_value = "terminal")]
         name: String,
@@ -172,6 +183,11 @@ fn run() -> Result<()> {
                 .build()?
                 .block_on(agentbox::http::serve(home, args.port))?;
         }
+        Commands::Attach {
+            session_id,
+            cwd,
+            no_replay,
+        } => attach::run(home, session_id, cwd, no_replay)?,
         Commands::Start => print(&rpc::ensure_broker(&home)?)?,
         Commands::Broker => agentbox::broker::serve(home)?,
         Commands::Token => {

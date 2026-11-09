@@ -45,3 +45,17 @@
 参见根目录 README 的 CLI 命令。CLI 不需要浏览器、HTTP 服务或手动输入 token。项目以当前用户权限执行命令，不提供权限隔离。
 
 `SOURCE-MANIFEST.sha256` 是原包内容清单；已移到 `docs/UPSTREAM-SOURCE-MANIFEST.sha256` 保留原始依据。不要用它校验修改后的副本。
+
+## 2026-11-10：原生共享终端 attach
+
+新增 `attach [SESSION_ID] [--cwd DIR] [--no-replay]`。无 ID 时创建 Shell 并启用 readline；有 ID 时接入原 Shell，不注入初始化命令。CLI 使用本地 raw tty，转发键盘并同步窗口尺寸；Ctrl-] 仅断开连接，exit 关闭 Shell。另一操作方仍使用同一 home 的 logs/input 接口，双方轮流输入。
+
+`python3 scripts/test-attach.py` 已用真实 PTY 和独立 broker 通过：本地键盘执行、另一 CLI 查看/操作同一 Shell 与环境变量、尺寸同步、Ctrl-C、终端查询过滤、断开恢复本地 termios、重新连接及 exit 关闭。macOS raw/canonical 切换会由内核设置 PENDIN，恢复检查仅忽略该内核管理的标志。两个新增单元测试覆盖分片 Unicode 输入、脱离快捷键和输出控制序列过滤。
+
+本功能不是完整屏幕状态同步器；历史有保留上限，--no-replay 不补画已有屏幕。OSC/DCS、设备查询和未知 CSI 会过滤，依赖这些功能的全屏程序可能受限。首次非空原始输入后，仍按原设计拒绝结构化 run，操作方需使用 input/logs。
+
+### Bash 3.2 连续命令提示符修复
+
+真实使用发现，在结构化 run 的 source 脚本中执行 `set -o emacs` 会使系统 Bash 3.2 后续不再显示提示符，虽然命令仍能执行。已在独立 PTY 中复现；将新建共享 Shell 的 readline 初始化改为顶层 input，避免 source 路径。已有受影响会话可在顶层执行 `set +o emacs; set -o emacs` 恢复，保留原 Shell 状态。
+
+原生 attach 回归测试新增“每一条连续命令后必须出现新提示符”的断言；该断言在旧二进制上复现失败，在修复后通过。之前的仅输出匹配不能证明交互提示符正常。

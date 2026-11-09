@@ -6,6 +6,32 @@ See [macOS verification](docs/MACOS.md) for actual checks and limitations.
 The [original package README](docs/UPSTREAM-README.md) is retained for provenance;
 its Linux-only and unverified statements describe the original source package.
 
+## Shared interactive terminal
+
+```sh
+./target/debug/agentbox attach --home "$PWD/.macos-demo"
+```
+
+This creates a shell and prints its session ID. Type normally in your terminal;
+another operator or agent can inspect `agentbox logs SESSION_ID --follow` and
+send keystrokes with `agentbox input SESSION_ID 'command text' --newline`, using
+the same `--home`. Both operators control the same shell and must take turns typing.
+
+`Ctrl-]` detaches without closing the shell. Reconnect with
+`agentbox attach SESSION_ID --home "$PWD/.macos-demo"`; type `exit` in the shell
+to close it. Attaching to an existing session does not inject setup commands.
+Omit the ID to create a shell with readline editing enabled. Existing shells
+retain their own editing mode. Window size follows the attached terminal.
+
+This streams retained terminal output, not a saved screen image; use `--no-replay`
+for live output only. Terminal device queries, OSC/DCS and unknown CSI operations
+are filtered to prevent automatic terminal replies or clipboard operations.
+Programs needing those features may not work fully. Raw keyboard input uses the
+broker's Unicode API; NUL is omitted and invalid UTF-8 is replaced. After raw
+input, agents should continue using `input`/`logs` rather than structured `run`.
+
+Native PTY checks: `python3 scripts/test-attach.py` (requires local Unix sockets).
+
 ## Use the CLI on Linux or macOS
 
 ```sh
