@@ -1,0 +1,28 @@
+name: Linux
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: bash scripts/verify.sh
+      - run: cargo build --locked
+      - run: python3 scripts/test-macos-cli.py
+      - run: cargo test --locked --test local_e2e -- --ignored --test-threads=1
+        env:
+          AGENTBOX_ALLOW_SOCKET_TESTS: '1'
+      - run: cargo build --locked --release

@@ -1,11 +1,12 @@
-# AgentBox Rust — macOS trial
+# AgentBox Rust — Linux and macOS
 
-This is a local macOS adaptation of `AgentBox-Rust-source-unverified.zip`.
+This is a Linux and macOS adaptation of `AgentBox-Rust-source-unverified.zip`.
+See [Linux verification](docs/LINUX.md) for the Linux checks and setup.
 See [macOS verification](docs/MACOS.md) for actual checks and limitations.
 The [original package README](docs/UPSTREAM-README.md) is retained for provenance;
 its Linux-only and unverified statements describe the original source package.
 
-## Use the CLI on this Mac
+## Use the CLI on Linux or macOS
 
 ```sh
 cd agentbox-rust
@@ -48,7 +49,7 @@ Deliberately daemonized processes can escape the session on both platforms.
 - Detached broker, SQLite command history, bounded output replay and request ID deduplication.
 - CLI and stdio MCP interfaces; an optional embedded web UI.
 - On macOS arm64: 50 Rust tests and seven pure CLI scenarios passed, along with fmt, clippy and six frontend test files. A live socket/MCP integration test also passed.
-- Linux code paths remain, but have not been rebuilt after this macOS adaptation. Browser UI acceptance testing is incomplete.
+- On Ubuntu 22.04 x86_64: 50 Rust tests, seven CLI scenarios, the live HTTP/MCP integration test, fmt, clippy and six frontend test files passed. See [Linux verification](docs/LINUX.md). Browser UI acceptance testing is incomplete.
 - Nonempty raw input permanently disables later structured `run` in that session; create a new session to resume structured execution.
 
 ## Documentation

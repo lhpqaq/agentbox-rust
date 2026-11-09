@@ -278,7 +278,8 @@ PROMPT_COMMAND=__ab_prompt
                     &mut slave,
                     std::ptr::null_mut(),
                     std::ptr::null_mut(),
-                    &mut size,
+                    // Darwin requires a mutable pointer; Linux accepts const.
+                    std::ptr::addr_of_mut!(size),
                 )
             } < 0
             {

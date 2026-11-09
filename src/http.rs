@@ -86,6 +86,8 @@ async fn guard(State(app): State<App>, req: Request, next: Next) -> Response {
     for (key,value) in [("x-content-type-options","nosniff"),("x-frame-options","DENY"),("referrer-policy","no-referrer"),("cache-control","no-store"),("content-security-policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")] {response.headers_mut().insert(axum::http::HeaderName::from_static(key),value.parse().unwrap());}
     response
 }
+// Responses are returned directly by the handlers, including on error.
+#[allow(clippy::result_large_err)]
 async fn call(app: &App, method: &str, params: Value) -> Result<Value, Response> {
     let rpc = app.rpc.clone();
     let method = method.to_owned();
@@ -175,6 +177,7 @@ fn validate(method: &str, v: &Value) -> bool {
         _ => true,
     }
 }
+#[allow(clippy::result_large_err)]
 async fn read_body(req: Request) -> Result<Value, Response> {
     let bytes = to_bytes(req.into_body(), MAX_BODY)
         .await

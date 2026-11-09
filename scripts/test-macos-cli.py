@@ -11,7 +11,7 @@ BIN = ROOT / 'target/debug/agentbox'
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='abmac-cli-', dir='/private/tmp') as temp:
+    with tempfile.TemporaryDirectory(prefix='agentbox-cli-') as temp:
         base = pathlib.Path(temp)
         home = base / 'state'
         work = base / 'work'
