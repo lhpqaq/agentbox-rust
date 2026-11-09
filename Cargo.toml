@@ -1,0 +1,29 @@
+[package]
+name = "agentbox"
+version = "0.2.0"
+edition = "2021"
+description = "Local persistent Bash PTY workspace with HTTP and MCP interfaces"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+async-stream = "0.3"
+axum = "0.7"
+clap = { version = "4.5", features = ["derive"] }
+libc = "0.2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tokio = { version = "1.40", features = ["full"] }
+tokio-stream = "0.1"
+uuid = { version = "1.10", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.12"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+lto = "thin"
+strip = true

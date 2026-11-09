@@ -1,0 +1,14 @@
+xterm.js and xterm-addon-fit are vendored from the preinstalled Playwright trace viewer bundle, without modification. They provide the terminal emulator and terminal fitting logic. Source projects: https://github.com/xtermjs/xterm.js and https://github.com/microsoft/playwright. This application does not load CDN resources.
+
+Copyright (c) 2014 The xterm.js authors. All rights reserved.
+Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+The prebuilt distribution source also carries Playwright Apache-2.0 notices; see PLAYWRIGHT-LICENSE.txt and PLAYWRIGHT-NOTICE.txt. The bundle is pinned locally; terminal provenance behavior is covered by tests.
+
+Vendored xterm.js SHA-256: 4aa82b0448cef1cf951bbe0ac80bf2d2b7c5d279dd74bcc798a9e563e98e5295

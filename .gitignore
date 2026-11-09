@@ -1,0 +1,13 @@
+/target/
+/dist/
+*.log
+
+.macos-demo/
+
+# Local verification artifacts and runtime state
+docs/macos-checks.txt
+docs/macos-demo.json
+__pycache__/
+.DS_Store
+.env
+.env.*

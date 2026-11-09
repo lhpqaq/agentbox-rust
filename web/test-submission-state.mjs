@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+const source=await fs.readFile(new URL('./submission-state.js',import.meta.url),'utf8');
+const {prepareSubmission,confirmSubmission,readSubmissionResult,mergeSubmissionResult,uncertainSubmissionMessage}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+let serial=0;const createId=()=>`test-request-${++serial}`;
+const cache={};
+const first=prepareSubmission(cache,'echo hello',createId);
+assert.equal(first.request_id,'test-request-1');
+assert.equal(prepareSubmission(cache,'echo hello',createId),first,'Manual retry must reuse unresolved identity');
+const other=prepareSubmission(cache,'echo different',createId);
+assert.notEqual(other.request_id,first.request_id);
+assert.equal(prepareSubmission(cache,'echo hello',createId),first,'A different intervening command must not lose the first pending identity');
+const spaced=prepareSubmission(cache,'echo hello ',createId);
+assert.notEqual(spaced.request_id,first.request_id,'Identity is based on exact submitted bytes');
+const afterEviction={pendingRequests:cache.pendingRequests};
+assert.equal(prepareSubmission(afterEviction,'echo hello',createId),first,'Journal survives transcript cache eviction');
+for(const failure of [new Error('network lost'),new Error(''),{},null]){
+ const message=uncertainSubmissionMessage(failure,first);
+ assert.ok(message.includes(first.request_id));assert.ok(message.includes('可能已执行'));assert.ok(message.includes('执行记录'));assert.ok(message.includes('不会自动重试'));
+ assert.equal(prepareSubmission(cache,'echo hello',createId),first);
+}
+const replay={id:'command-1',command:first.command,request_id:first.request_id,status:'finished',exit_code:0,replayed:true};
+assert.equal(readSubmissionResult(replay,first),replay);
+for(const response of [null,{}, {...replay,request_id:'wrong'}, {...replay,command:'different'}])assert.throws(()=>readSubmissionResult(response,first),/确认/);
+const records=[];const confirmed=mergeSubmissionResult(records,replay);
+assert.equal(confirmed.status,'finished','Replayed terminal status must not become running');
+assert.equal(mergeSubmissionResult(records,{...replay,status:'running'}).status,'finished','Late HTTP running response must not roll back finished SSE state');
+confirmSubmission(cache,first);
+const fresh=prepareSubmission(cache,'echo hello',createId);
+assert.notEqual(fresh.request_id,first.request_id,'An explicitly rerun confirmed command gets a new identity');
+confirmSubmission(cache,first);
+assert.equal(prepareSubmission(cache,'echo hello',createId),fresh,'Old confirmation must not clear a newer attempt');
+const actual=prepareSubmission({},'true');assert.match(actual.request_id,/^[0-9a-f]{8}-[0-9a-f-]{27}$/i);
+console.log('PASS: UUID creation, exact-command manual retry, multiple pending commands, cache eviction, uncertain outcomes, response validation, replayed final status, SSE race and new execution after confirmation.');

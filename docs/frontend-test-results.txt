@@ -1,0 +1,24 @@
+2026-11-07: frontend-only checks; not browser or backend verification
+
+web/test-ansi-text.mjs
+PASS: forward-only ANSI/OSC/DCS scanner, BEL/ST, Unicode/newlines, unterminated strings; 1M malformed characters in 9.7ms. Session creation generation/unlock guard statically verified; no browser/socket test.
+
+web/test-input-transport.mjs
+PASS: bounded 64-request/256-KiB input, UTF-8-safe 60-KiB chunks, atomic overflow rejection, FIFO user/device ordering, 8-second abort, immediate generation switch, late-completion isolation, device409 and no uncertain-write retries. Mock-only; no sockets.
+
+web/test-link-safety.mjs
+PASS: non-web/obfuscated/relative/credentialed terminal links blocked; explicit HTTP(S) only; Chinese confirmation required; cancellation respected; opener/referrer isolation configured. No URLs were opened.
+
+web/test-replay-state.mjs
+PASS: replay cannot roll back finished/lost commands or closed sessions; missing historical status remains unknown; live updates apply; reconnect snapshots repair metadata without clearing output.
+PASS: exited/lost completion closes sessions; null/invalid duration is unknown unless running; failure, interruption, shell exit and lost-state labels remain distinct.
+PASS: server retention warnings use valid same-session start/first sequence boundaries, handle empty retained history, stay separate from browser truncation, and use one bounded scalar per cache.
+
+web/test-submission-state.mjs
+PASS: UUID creation, exact-command manual retry, multiple pending commands, cache eviction, uncertain outcomes, response validation, replayed final status, SSE race and new execution after confirmation.
+
+web/test-terminal-input.mjs
+PASS: replay replies blocked; genuine keyboard/paste/IME provenance accepted; explicit output associations survive retention; pinned vendor contract verified.
+PASS: actual vendored xterm asynchronously emitted CPR/DA/status replies; all were blocked while explicit user input passed.
+PASS: live replies allowed; replay denied; mixed FIFO parsing, session reset, generation invalidation, missing watermark and independent user input verified against real xterm.
+PASS: delayed parser proves 2 Mi/write, 4 Mi total and 64-write bounds; overflow visibly resets/revokes replies; per-event backpressure stays at one write; abort/reset remains responsive; SSE buffer is capped at 8 Mi characters.
