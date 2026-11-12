@@ -63,6 +63,8 @@ agentbox-here() {
       fi
       builtin local -x LC_ALL=$__agentbox_utf8
       builtin print -r -- '# AgentBox explicit state snapshot; trusted shell code.'
+      builtin print -r -- '__agentbox_state_aliases=$options[aliases]'
+      builtin print -r -- '\builtin unsetopt aliases'
       for __agentbox_name in "${__agentbox_vars[@]}"; do
         __agentbox_declaration=$(builtin typeset -p -- "$__agentbox_name") || return
         builtin printf '%s || return\n' "$__agentbox_declaration"
@@ -72,6 +74,7 @@ agentbox-here() {
       done
       for __agentbox_name in "${__agentbox_functions[@]}"; do
         __agentbox_declaration=$(builtin functions -- "$__agentbox_name") || return
+        builtin printf 'builtin unalias -- %q 2>/dev/null || builtin true\n' "$__agentbox_name"
         builtin printf '%s || return\n' "$__agentbox_declaration"
       done
       # Aliases go last so they cannot rewrite the serialized declarations.
@@ -86,6 +89,8 @@ agentbox-here() {
           builtin printf 'builtin alias -s -- %q=%q || return\n' "$__agentbox_name" "$saliases[$__agentbox_name]"
         done
       fi
+      builtin print -r -- 'if [[ $__agentbox_state_aliases == on ]]; then builtin setopt aliases; fi'
+      builtin print -r -- 'builtin unset __agentbox_state_aliases'
       for __agentbox_name in "${__agentbox_copy_options[@]}"; do
         if [[ $__agentbox_saved_options[$__agentbox_name] == on ]]; then
           builtin printf 'builtin setopt -- %q || return\n' "$__agentbox_name"

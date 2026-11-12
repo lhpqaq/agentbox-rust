@@ -6,6 +6,10 @@ The original uncompiled-package record is preserved in
 
 ## Current evidence
 
+- Native-shell/state work: [Linux and macOS CI for d0a0d4c](https://github.com/lhpqaq/agentbox-rust/actions/runs/43253228657) passed with pinned real Oh My Zsh, autosuggestions and syntax-highlighting fixtures, native Bash/Zsh reconnect, state import and HTTP/MCP native creation tests. Later commits require their own CI evidence.
+- Local state tests additionally cover startup prompts during pending import, explicit success/failure metadata, closing a pending import, UTF-8 state under a C locale, virtual-environment PATH restoration, and invoking embedded shell integration without putting the binary on PATH.
+- Plugin acceptance executes an actual ghost suggestion with an editing key, observes syntax colors and checks real completion/plugin bindings. Local fixture versions: autosuggestions 0.7.0 and syntax-highlighting 0.8.0; Oh My Zsh commit `67cd8c4673512d08238461f7ce00715da01665d4`. CI pins the corresponding source commits. All fixture runs use disposable HOME/cache/history directories and disable framework self-updates.
+
 - Local macOS: formatting, all-target checking, Rust tests, clippy with warnings
   denied, frontend parser/mock tests, and source-packaging regression pass.
 - Disposable broker CLI tests cover persistent shell state, request deduplication,
@@ -26,7 +30,7 @@ The original uncompiled-package record is preserved in
 ## Reproduce
 
 Prerequisites: a supported Linux or macOS host, Rust/Cargo with rustfmt and clippy,
-a C compiler, Bash, Python 3, Git and Node.js. No script installs dependencies.
+a C compiler, Bash, Zsh, Python 3, Git and Node.js. Local verification scripts do not install dependencies. CI explicitly installs Zsh and checks out pinned plugin fixtures.
 Use the committed Cargo.lock.
 
 ```sh
@@ -34,6 +38,9 @@ bash scripts/verify.sh
 cargo build --locked
 python3 scripts/test-macos-cli.py
 python3 scripts/test-attach.py
+python3 scripts/test-shell.py
+python3 scripts/test-shell-state.py
+AGENTBOX_TEST_LOCALE=C python3 scripts/test-shell-state.py
 python3 scripts/test-bulk-output.py
 python3 scripts/test-concurrency.py
 AGENTBOX_ALLOW_SOCKET_TESTS=1 cargo test --locked --test local_e2e -- --ignored --test-threads=1
@@ -70,6 +77,9 @@ scenarios can exercise the release artifact rather than only a debug build:
 ```sh
 AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-macos-cli.py
 AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-attach.py
+AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-shell.py
+AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-shell-state.py
+AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-zsh-plugins.py
 AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-bulk-output.py
 AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-concurrency.py
 ```

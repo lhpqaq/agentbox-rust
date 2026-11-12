@@ -52,7 +52,11 @@ def main():
     readme = f'''AgentBox {version} ({info['platform']} / {info['architecture']})
 
 Run: ./agentbox --help
-Start a shared terminal: ./agentbox attach
+Start a shared terminal with your Bash/Zsh configuration: ./agentbox attach
+Explicit Zsh: ./agentbox attach --shell /bin/zsh
+Optional current-Zsh state integration: eval "$(./agentbox shell-init zsh)"
+Then: agentbox-here --var MY_VARIABLE --function my_function -- --home PATH
+Native sessions use input/read; create defaults to managed Bash for run/wait.
 List sessions: ./agentbox sessions --active --table
 Diagnose: ./agentbox doctor
 

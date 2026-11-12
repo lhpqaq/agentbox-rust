@@ -30,7 +30,7 @@ def main():
         assert zsh
         (user / '.zshenv').write_text('RC_ORDER=env\n')
         (user / '.zprofile').write_text('RC_ORDER+=:profile\n')
-        (user / '.zshrc').write_text("RC_ORDER+=:rc\nPROMPT='CHILD> '\nalias local_alias='print rc-alias'\nsetopt autocd\nunsetopt extendedglob\nexport RESTORE_ME=changed_by_rc\nexport PATH=/usr/bin:/bin\n")
+        (user / '.zshrc').write_text("RC_ORDER+=:rc\nPROMPT='CHILD> '\nalias local_alias='print rc-alias'\nalias snap_function='print WRONG_ALIAS'\nsetopt autocd\nunsetopt extendedglob\nexport RESTORE_ME=changed_by_rc\nexport PATH=/usr/bin:/bin\n")
         (user / '.zlogin').write_text('RC_ORDER+=:login\n')
         env = {**os.environ, 'HOME':str(user),'ZDOTDIR':str(user),'PATH':os.environ['PATH'], 'SHELL':zsh,
                'PROMPT':'PARENT> ', 'skip_global_compinit':'1', 'LC_ALL': os.environ.get('AGENTBOX_TEST_LOCALE', 'en_US.UTF-8' if os.uname().sysname == 'Darwin' else 'C.UTF-8')}

@@ -256,6 +256,15 @@ pub fn run(
     if read_only && session_id.is_none() {
         bail!("--read-only requires an existing session ID");
     }
+    let new_request = if session_id.is_none() {
+        let (rows, cols) = size().unwrap_or((30, 100));
+        let cwd = cwd.unwrap_or(std::env::current_dir()?);
+        let mut request = json!({"name":"shared terminal","cwd":cwd,"rows":rows,"cols":cols});
+        shell_options.apply(&mut request, true, &cwd)?;
+        Some(request)
+    } else {
+        None
+    };
     if !read_only {
         agentbox::rpc::ensure_broker(&home)?;
     }
@@ -263,10 +272,7 @@ pub fn run(
     let session_id = match session_id {
         Some(id) => agentbox::selection::resolve(&client, &id)?,
         None => {
-            let (rows, cols) = size().unwrap_or((30, 100));
-            let cwd = cwd.unwrap_or(std::env::current_dir()?);
-            let mut request = json!({"name":"shared terminal","cwd":cwd,"rows":rows,"cols":cols});
-            shell_options.apply(&mut request, true, &cwd)?;
+            let request = new_request.context("Missing new-session configuration")?;
             let native = request.get("shell").is_some();
             let session = call(&client, "create", request)?;
             let id = session["id"]

@@ -102,6 +102,10 @@ impl ShellOptions {
             request["zsh_state"] = json!(state);
         }
         shell::Launch::parse(request, cwd)?;
+        // Leave room for the authenticated RPC envelope before starting a broker.
+        if serde_json::to_vec(request)?.len() > 390 * 1024 {
+            bail!("Combined shell state and environment exceed the request limit; select fewer variables/functions");
+        }
         Ok(())
     }
 }
