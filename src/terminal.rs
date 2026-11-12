@@ -83,6 +83,7 @@ impl Terminal {
         let idle = Arc::new(AtomicBool::new(false));
         let closed = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = mpsc::channel();
+        let importing = spec.launch.zsh_state.is_some();
         let mut engine = Engine::spawn(spec, sink, idle.clone(), closed.clone())?;
         let pid = engine.child.id();
         let worker = thread::Builder::new()
@@ -103,6 +104,9 @@ impl Terminal {
             }
             Err(_) => {
                 let _ = terminal.close();
+                if importing {
+                    bail!("Zsh state import did not complete within 8 seconds; startup may be waiting for input or overriding ZDOTDIR. The new shell was closed; existing sessions were not changed.");
+                }
                 bail!("Shell did not become ready within 8 seconds")
             }
         }
@@ -694,7 +698,10 @@ PROMPT_COMMAND=__ab_prompt
             self.read_output(false);
             self.cwd = String::from_utf8_lossy(fields[3]).into_owned();
             match fields[0] {
-                b"I" if self.tainted && !self.initialized && id.is_empty() && status == 0 => {
+                b"I" if self.tainted && !self.initialized && id.is_empty() => {
+                    if status != 0 {
+                        bail!("Zsh state import failed with exit status {status}");
+                    }
                     self.initialized = true;
                     self.emit(TerminalEvent::State {
                         status: "interactive".into(),

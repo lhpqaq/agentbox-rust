@@ -383,3 +383,138 @@ fn rpc_drains_closed_peer_and_enforces_deadline() {
     assert!(start.elapsed() < Duration::from_secs(1));
     server.join().unwrap();
 }
+
+#[test]
+#[ignore = "requires explicit AGENTBOX_ALLOW_SOCKET_TESTS=1 on a permitted Linux or macOS machine"]
+fn old_broker_never_receives_native_create_mutation() {
+    use std::os::unix::net::UnixListener;
+    assert_eq!(
+        std::env::var("AGENTBOX_ALLOW_SOCKET_TESTS").as_deref(),
+        Ok("1")
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let socket = UnixListener::bind(temp.path().join("broker.sock")).unwrap();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = socket.accept().unwrap();
+        let mut request = String::new();
+        BufReader::new(&stream).read_line(&mut request).unwrap();
+        let request: Value = serde_json::from_str(&request).unwrap();
+        assert_eq!(request["method"], "status");
+        assert_eq!(request["params"], json!({}));
+        writeln!(stream, "{}", json!({"ok":true,"result":{"version":"old"}})).unwrap();
+        socket
+    });
+    let client = agentbox::rpc::RpcClient {
+        home: temp.path().to_owned(),
+        token: "fixture".into(),
+    };
+    let error = client
+        .call(
+            "create",
+            json!({"shell":"/bin/zsh","environment":{"PRIVATE":"not-in-status"}}),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, 409);
+    assert!(error.message.contains("No session was created"));
+    let socket = server.join().unwrap();
+    socket.set_nonblocking(true).unwrap();
+    assert_eq!(
+        socket.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+}
+
+#[test]
+#[ignore = "requires explicit AGENTBOX_ALLOW_SOCKET_TESTS=1 on a permitted Linux or macOS machine"]
+fn native_shell_creation_through_http_and_mcp() {
+    assert_eq!(
+        std::env::var("AGENTBOX_ALLOW_SOCKET_TESTS").as_deref(),
+        Ok("1")
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let mut instance = Instance {
+        home: temp.path().join("state"),
+        port,
+        http: None,
+    };
+    instance.start();
+    let request = json!({"name":"native-api","shell":"/bin/bash","no_rc":true,"environment":{"HOME":temp.path(),"PATH":"/usr/bin:/bin","API_ENV":"shared value"}});
+    let (status, session) = instance
+        .request("POST", "/api/sessions", Some(request.clone()), true)
+        .unwrap();
+    assert_eq!(status, 201, "{session}");
+    assert_eq!(session["shell"]["mode"], "native");
+    assert_eq!(session["status"], "interactive");
+    let mut child = Command::new(BIN)
+        .args(["mcp", "--home"])
+        .arg(&instance.home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    writeln!(input,"{}",json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"native-api-test","version":"1"}}})).unwrap();
+    output.read_line(&mut line).unwrap();
+    assert!(serde_json::from_str::<Value>(&line).unwrap()["result"].is_object());
+    writeln!(
+        input,
+        "{}",
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .unwrap();
+    writeln!(input,"{}",json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"agentbox_create","arguments":request}})).unwrap();
+    line.clear();
+    output.read_line(&mut line).unwrap();
+    let response: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let content: Value =
+        serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let mcp_session = &content["result"];
+    assert_eq!(mcp_session["shell"]["mode"], "native");
+    for session in [&session, mcp_session] {
+        let id = session["id"].as_str().unwrap();
+        let (status, _) = instance
+            .request(
+                "POST",
+                &format!("/api/sessions/{id}/input"),
+                Some(json!({"data":"printf 'API:%s\\n' \"$API_ENV\"\n"})),
+                true,
+            )
+            .unwrap();
+        assert_eq!(status, 200);
+        let until = Instant::now() + Duration::from_secs(5);
+        loop {
+            let result = instance.cli(&["read", id]);
+            assert!(result.status.success());
+            let result: Value = serde_json::from_slice(&result.stdout).unwrap();
+            if result["output"]
+                .as_str()
+                .unwrap()
+                .contains("API:shared value")
+            {
+                break;
+            }
+            assert!(Instant::now() < until, "native API output missing");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!instance.cli(&["run", id, "true"]).status.success());
+        let (_, detail) = instance
+            .request("GET", &format!("/api/sessions/{id}"), None, true)
+            .unwrap();
+        assert!(detail.get("environment").is_none());
+        assert_eq!(
+            instance
+                .request("DELETE", &format!("/api/sessions/{id}"), None, true)
+                .unwrap()
+                .0,
+            200
+        );
+    }
+    drop(input);
+    assert!(child.wait().unwrap().success());
+}

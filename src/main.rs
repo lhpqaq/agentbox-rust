@@ -312,7 +312,6 @@ fn run() -> Result<()> {
                     let cwd = cwd.unwrap_or(std::env::current_dir()?);
                     let mut request = json!({"name":name,"cwd":cwd,"rows":rows,"cols":cols});
                     shell_options.apply(&mut request, false, &cwd)?;
-                    cli_shell::check_capabilities(&client, &request)?;
                     let c = client.call("create", request)?;
                     println!("{}", c["id"].as_str().context("Missing session ID")?);
                 }

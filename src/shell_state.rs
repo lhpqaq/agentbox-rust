@@ -50,11 +50,7 @@ pub fn prepare(runtime: &Path, launch: &crate::shell::Launch) -> Result<Option<P
             r#"builtin source {dir}/state.zsh
 __agentbox_state_result=$?
 command /bin/rm -rf -- {dir}
-if (( __agentbox_state_result == 0 )); then
-  builtin printf 'I\0\0%d\0%s\0%s\0' 0 "$PWD" "$$" >&198
-else
-  builtin printf 'AgentBox: importing Zsh state failed\n' >&2
-fi
+builtin printf 'I\0\0%d\0%s\0%s\0' "$__agentbox_state_result" "$PWD" "$$" >&198
 __agentbox_state_fd=198
 exec {{__agentbox_state_fd}}>&-
 builtin unset __agentbox_state_zdot_set __agentbox_state_zdot __agentbox_state_result __agentbox_state_fd

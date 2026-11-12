@@ -42,9 +42,11 @@ agentbox-here --var PROJECT_NOTE --var TARGETS --function my_status \
 这条 `eval` 只定义当前 shell 的 `agentbox-here` 函数。若希望以后自动提供此函数，
 可以自行把它加到 `.zshrc`，AgentBox 不会自动改写配置。
 
-- 默认复制当前别名；`--no-aliases` 可关闭。
+- 默认复制当前普通别名、全局别名和后缀别名；`--no-aliases` 可关闭。
 - `--var NAME` 复制指定的全局普通变量、数组或关联数组。特殊参数、函数局部变量
   和集成保留名称会拒绝，避免导入 shell 内部状态。
+- `--export NAME` 在启动文件执行后恢复指定的已导出标量。适合 `PATH`、
+  `VIRTUAL_ENV` 等需要优先于新 shell 启动配置的值；不会复制 AgentBox 控制变量。
 - `--function NAME` 复制指定的函数定义。
 - `--option NAME` 复制指定 Zsh 选项的当前开/关状态。名称采用规范小写形式，例如
   `autocd`、`extendedglob`。启动身份等不可复制选项会拒绝。
@@ -97,3 +99,9 @@ Zsh 配置可能在用户 `.zshrc` 之前调用补全初始化；若它提示检
 
 测试入口：`scripts/test-shell.py`、`scripts/test-shell-state.py`，均使用临时目录和
 独立 broker，不会加载或修改你自己的点文件，不会干扰现有共享终端。
+
+
+实际插件验收还可运行 `python3 scripts/test-zsh-plugins.py`。默认使用本机
+`~/.oh-my-zsh` 和 Homebrew 的插件目录，也可通过 `AGENTBOX_TEST_OMZ`、
+`AGENTBOX_TEST_AUTOSUGGEST`、`AGENTBOX_TEST_HIGHLIGHT` 指向已安装的插件。
+测试用临时 HOME、缓存和补全文件，关闭框架自动更新，不修改原插件或个人配置。

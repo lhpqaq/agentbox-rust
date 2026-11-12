@@ -1,4 +1,4 @@
-use agentbox::{rpc::RpcClient, shell};
+use agentbox::shell;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use serde_json::{json, Value};
@@ -104,25 +104,4 @@ impl ShellOptions {
         shell::Launch::parse(request, cwd)?;
         Ok(())
     }
-}
-/// Old brokers ignore unknown create keys. Fail before creating a wrong shell.
-pub fn check_capabilities(client: &RpcClient, request: &Value) -> Result<()> {
-    if request.get("shell").is_none() && request.get("environment").is_none() {
-        return Ok(());
-    }
-    let status = client.call("status", json!({}))?;
-    for (field, capability) in [
-        ("shell", "native_shell_v1"),
-        ("environment", "client_environment_v1"),
-        ("zsh_state", "zsh_state_v1"),
-    ] {
-        if request.get(field).is_some()
-            && !status["capabilities"]
-                .as_array()
-                .is_some_and(|items| items.iter().any(|v| v == capability))
-        {
-            bail!("The running broker does not support {capability}. Use a new --home or finish live work before restarting it. Existing sessions were not changed.");
-        }
-    }
-    Ok(())
 }

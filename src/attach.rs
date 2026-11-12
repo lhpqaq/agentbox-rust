@@ -267,7 +267,6 @@ pub fn run(
             let cwd = cwd.unwrap_or(std::env::current_dir()?);
             let mut request = json!({"name":"shared terminal","cwd":cwd,"rows":rows,"cols":cols});
             shell_options.apply(&mut request, true, &cwd)?;
-            crate::cli_shell::check_capabilities(&client, &request)?;
             let native = request.get("shell").is_some();
             let session = call(&client, "create", request)?;
             let id = session["id"]

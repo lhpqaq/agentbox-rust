@@ -30,6 +30,35 @@ impl RpcClient {
         self.call_timeout(method, params, Duration::from_secs(15))
     }
     pub fn call_timeout(&self, method: &str, params: Value, timeout: Duration) -> Result<Value> {
+        let started = Instant::now();
+        if method == "create" {
+            let requirements = [
+                ("shell", "native_shell_v1"),
+                ("environment", "client_environment_v1"),
+                ("zsh_state", "zsh_state_v1"),
+            ];
+            if requirements
+                .iter()
+                .any(|(field, _)| params.get(field).is_some_and(|v| !v.is_null()))
+            {
+                let status = self.call_timeout("status", json!({}), timeout)?;
+                for (field, capability) in requirements {
+                    if params.get(field).is_some_and(|v| !v.is_null())
+                        && !status["capabilities"]
+                            .as_array()
+                            .is_some_and(|items| items.iter().any(|v| v == capability))
+                    {
+                        return Err(AbError::new(409, format!("The running broker does not support {capability}. Use a new --home or finish live work before restarting it. No session was created.")));
+                    }
+                }
+            }
+        }
+        let timeout = timeout
+            .checked_sub(started.elapsed())
+            .filter(|t| !t.is_zero())
+            .ok_or_else(|| {
+                AbError::new(504, "Broker request deadline expired before submission")
+            })?;
         let mutating = matches!(
             method,
             "create" | "run" | "input" | "interrupt" | "close" | "rename" | "resize" | "shutdown"

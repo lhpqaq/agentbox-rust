@@ -11,3 +11,6 @@ __pycache__/
 .DS_Store
 .env
 .env.*
+
+# Pinned third-party plugin fixtures used only by CI
+.ci-fixtures/
