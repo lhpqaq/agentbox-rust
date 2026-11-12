@@ -205,6 +205,10 @@ def main():
             remote(sid, "printf '\\033[6n\\033]52;c;ignored\\007'; printf 'QUERY_FILTERED\\n'")
             one.until(b'QUERY_FILTERED\r\n')
             assert b'\x1b[6n' not in one.output and b'\x1b]52' not in one.output
+            remote(sid, r"printf '\302\2336n\033[?01004h'; printf 'C1_FILTERED\n'")
+            one.until(b'C1_FILTERED\r\n')
+            assert b'\xc2\x9b6n' not in one.output and b'\x1b[?01004h' not in one.output
+
             one.send(b'sleep 30\r')
             one.until(b'sleep 30')
             one.send(b'\x03')

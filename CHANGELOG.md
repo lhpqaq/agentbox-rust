@@ -21,6 +21,8 @@
 
 ### Reliability and delivery
 
+- Native output filtering handles UTF-8 C1 control forms and zero-padded focus
+  reporting modes while preserving ordinary Unicode and color output.
 - macOS RPC reads drain buffered responses after peer closure without the
   SO_RCVTIMEO/EINVAL race. Reads use a nonblocking socket and absolute deadline;
   mutations are never automatically retried.

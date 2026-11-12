@@ -94,7 +94,25 @@ struct DisplayFilter {
 impl DisplayFilter {
     fn push(&mut self, text: &str) -> Vec<u8> {
         let mut out = Vec::new();
-        for &b in text.as_bytes() {
+        // UTF-8 encoded C1 controls are equivalent to their ESC forms. Normalize
+        // complete Unicode scalars, never arbitrary UTF-8 continuation bytes.
+        let normalized;
+        let bytes = if text.chars().any(|c| ('\u{80}'..='\u{9f}').contains(&c)) {
+            let mut buffer = Vec::with_capacity(text.len());
+            for c in text.chars() {
+                if ('\u{80}'..='\u{9f}').contains(&c) {
+                    buffer.extend_from_slice(&[0x1b, c as u8 - 0x40]);
+                } else {
+                    let mut encoded = [0u8; 4];
+                    buffer.extend_from_slice(c.encode_utf8(&mut encoded).as_bytes());
+                }
+            }
+            normalized = buffer;
+            normalized.as_slice()
+        } else {
+            text.as_bytes()
+        };
+        for &b in bytes {
             match self.state {
                 0 => {
                     if b == 0x1b {
@@ -129,12 +147,28 @@ impl DisplayFilter {
                         let safe = b"@ABCDEFGH IJKLMPSTXZ`abdefghlmrs".contains(&b)
                             || (b == b'u' && self.sequence.len() == 1)
                             || (b == b'q' && self.sequence.ends_with(b" q"));
-                        let focus_reporting = matches!(b, b'h' | b'l')
-                            && self.sequence.starts_with(b"?")
-                            && self.sequence[..self.sequence.len() - 1]
-                                .split(|v| *v == b';')
-                                .any(|p| p == b"?1004" || p == b"1004");
-                        if safe && !focus_reporting {
+                        let safe_mode = if matches!(b, b'h' | b'l') {
+                            let parameters = &self.sequence[..self.sequence.len() - 1];
+                            let private = parameters.starts_with(b"?");
+                            let parameters = if private {
+                                &parameters[1..]
+                            } else {
+                                parameters
+                            };
+                            parameters.split(|v| *v == b';').all(|parameter| {
+                                if parameter.is_empty() {
+                                    return true;
+                                }
+                                parameter.iter().all(u8::is_ascii_digit)
+                                    && std::str::from_utf8(parameter)
+                                        .ok()
+                                        .and_then(|s| s.parse::<u16>().ok())
+                                        .is_some_and(|mode| !private || mode != 1004)
+                            })
+                        } else {
+                            true
+                        };
+                        if safe && safe_mode {
                             out.extend_from_slice(b"\x1b[");
                             out.extend_from_slice(&self.sequence);
                         }
@@ -371,6 +405,21 @@ mod tests {
         );
         f.push(&format!("\x1b[{}", "1".repeat(300)));
         assert_eq!(f.push("nend"), b"end");
+    }
+    #[test]
+    fn c1_controls_and_zero_padded_focus_modes_are_filtered() {
+        let mut filter = DisplayFilter::default();
+        assert_eq!(
+            filter.push("\u{9b}6n\u{9d}52;c;ignored\u{9c}丛中文"),
+            "丛中文".as_bytes()
+        );
+        assert_eq!(filter.push("\u{90}$qm\u{9c}safe"), b"safe");
+        assert_eq!(filter.push("\x1b[?001"), b"");
+        assert_eq!(filter.push("004h\x1b[?25;01004h\x1b[?1004:0h"), b"");
+        assert_eq!(
+            filter.push("\x1b[?25h\u{9b}31mred\x1b[0m"),
+            b"\x1b[?25h\x1b[31mred\x1b[0m"
+        );
     }
     #[test]
     fn split_unicode_and_detach_preserve_exact_keyboard_input() {
