@@ -32,3 +32,4 @@ jobs:
         env:
           AGENTBOX_ALLOW_SOCKET_TESTS: '1'
       - run: cargo build --locked --release
+      - run: bash scripts/package.sh

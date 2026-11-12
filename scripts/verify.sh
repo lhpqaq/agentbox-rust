@@ -5,5 +5,6 @@ cargo fmt --check
 cargo check --all-targets
 cargo test -- --test-threads=1
 cargo clippy --all-targets -- -D warnings
+python3 scripts/test-package.py
 for test in web/test-*.mjs; do node "$test"; done
 printf '\nDefault checks deliberately do not open sockets. See docs/VERIFICATION.md for opt-in end-to-end checks.\n'

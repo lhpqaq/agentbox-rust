@@ -36,6 +36,8 @@ enum Commands {
     Broker,
     /// Print the local bearer token. Treat output as a password.
     Token,
+    /// Diagnose local configuration and broker connectivity without changing state.
+    Doctor,
     Status,
     Sessions,
     /// Share a native terminal; omit SESSION_ID to create a new shell. Ctrl-] detaches.
@@ -207,6 +209,13 @@ fn run() -> Result<()> {
             no_replay,
             read_only,
         } => attach::run(home, session_id, cwd, no_replay, read_only)?,
+        Commands::Doctor => {
+            let report = agentbox::doctor::report(&home);
+            print(&report)?;
+            if report["ready"] != true {
+                bail!("Diagnostics found issues; see checks and next_steps above");
+            }
+        }
         Commands::Start => print(&rpc::ensure_broker(&home)?)?,
         Commands::Broker => agentbox::broker::serve(home)?,
         Commands::Token => {

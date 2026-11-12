@@ -115,3 +115,27 @@ Deliberately daemonized processes can escape the session on both platforms.
 ## License
 
 MIT; original copyright and bundled dependency notices are preserved.
+
+## Diagnose an instance
+
+```sh
+$AB doctor --home "$AB_HOME"
+```
+
+Returns JSON with shell, private directory, token, socket, broker, version and
+journal checks. Exit code is zero when all checks pass. It never starts a broker,
+creates state, changes permissions or sends shell input; token values are omitted.
+This diagnoses local broker connectivity, not the health of an SSH connection.
+
+## Package committed source
+
+```sh
+bash scripts/package.sh
+```
+
+Requires Git and Python 3. The tracked worktree must be clean. The ZIP contains
+committed `HEAD` content, `Cargo.lock`, executable file modes, a SHA-256 manifest
+and the commit identity. Ignored and untracked local files are excluded. Output:
+`dist/AgentBox-Rust-source.zip` and its `.sha256` file. Repeated packaging of the
+same commit in the same environment produces identical bytes. Packaging checks
+archive integrity; run the verification scripts to check behavior.

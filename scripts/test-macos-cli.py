@@ -37,8 +37,14 @@ def main():
             print(f'PASS: {name}', flush=True)
 
         try:
+            missing = data('doctor', success=False)
+            assert missing['ready'] is False and not home.exists()
             data('start')
             started = True
+            diagnosis = data('doctor')
+            assert diagnosis['ready'] is True and diagnosis['broker']['live_sessions'] == 0
+            assert (home / 'token').read_text().strip() not in json.dumps(diagnosis)
+            check('doctor diagnoses missing and running instances without leaking tokens or creating missing state')
             sid = cli('create', 'CLI test', '--cwd', str(work)).stdout.strip()
             data('run', sid, "export CLI_VALUE=kept; cli_fn(){ printf 'function:%s' \"$CLI_VALUE\"; }; cd child", '--request-id', 'state')
             r = data('run', sid, 'pwd; cli_fn', '--request-id', 'observe-state')
