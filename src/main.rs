@@ -46,6 +46,9 @@ enum Commands {
         /// Show only new output instead of replaying retained terminal output.
         #[arg(long)]
         no_replay: bool,
+        /// Observe an existing session without sending input or resizing its PTY.
+        #[arg(long, requires = "session_id")]
+        read_only: bool,
     },
     Create {
         #[arg(default_value = "terminal")]
@@ -110,6 +113,9 @@ enum Commands {
     Stop {
         #[arg(long)]
         shutdown_sessions: bool,
+        /// Stop the broker and shells without contacting an HTTP server.
+        #[arg(long, requires = "shutdown_sessions")]
+        broker_only: bool,
     },
     /// Newline-delimited JSON-RPC MCP server on stdin/stdout.
     Mcp,
@@ -187,7 +193,8 @@ fn run() -> Result<()> {
             session_id,
             cwd,
             no_replay,
-        } => attach::run(home, session_id, cwd, no_replay)?,
+            read_only,
+        } => attach::run(home, session_id, cwd, no_replay, read_only)?,
         Commands::Start => print(&rpc::ensure_broker(&home)?)?,
         Commands::Broker => agentbox::broker::serve(home)?,
         Commands::Token => {
@@ -195,8 +202,25 @@ fn run() -> Result<()> {
             println!("{}", config::read_token(&home)?);
         }
         Commands::Mcp => agentbox::mcp::run(home)?,
-        command => {
+        mut command => {
             let client = RpcClient::new(&home)?;
+            // Resolve once before any mutation or polling. A concurrent rename
+            // must never redirect subsequent input or observation to another shell.
+            let selector = match &mut command {
+                Commands::Run { session_id, .. }
+                | Commands::Wait { session_id, .. }
+                | Commands::Input { session_id, .. }
+                | Commands::Interrupt { session_id }
+                | Commands::Close { session_id }
+                | Commands::Rename { session_id, .. }
+                | Commands::Resize { session_id, .. }
+                | Commands::History { session_id }
+                | Commands::Logs { session_id, .. } => Some(session_id),
+                _ => None,
+            };
+            if let Some(id) = selector {
+                *id = agentbox::selection::resolve(&client, id)?;
+            }
             match command {
                 Commands::Status => print(&client.call("status", json!({}))?)?,
                 Commands::Sessions => print(&client.call("sessions", json!({}))?)?,
@@ -311,9 +335,15 @@ fn run() -> Result<()> {
                     }
                     std::thread::sleep(Duration::from_millis(200));
                 },
-                Commands::Stop { shutdown_sessions } => {
+                Commands::Stop {
+                    shutdown_sessions,
+                    broker_only,
+                } => {
                     if shutdown_sessions {
                         print(&client.call("shutdown", json!({}))?)?;
+                    }
+                    if broker_only {
+                        return Ok(());
                     }
                     match stop_http(args.port, &client.token) {
                         Ok(()) => eprintln!("HTTP server stopped"),

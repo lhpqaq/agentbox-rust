@@ -45,6 +45,17 @@ def main():
             assert str(work / 'child') in r['output'] and 'function:kept' in r['output']
             check('cwd, exported variable and function survive separate CLI invocations')
 
+            assert 'selector-name' in data('run', 'CLI test', 'printf selector-name')['output']
+            assert 'selector-prefix' in data('run', sid[:8], 'printf selector-prefix')['output']
+            duplicate = cli('create', 'CLI test', '--cwd', str(work)).stdout.strip()
+            rejected = cli('run', 'CLI test', 'touch selector-must-not-run', success=False)
+            assert 'Ambiguous' in rejected.stderr
+            assert not (work / 'selector-must-not-run').exists()
+            assert not (work / 'child' / 'selector-must-not-run').exists()
+            data('close', duplicate)
+            cli('run', 'CLI test', 'true', success=False)
+            check('names and unique ID prefixes resolve; ambiguous names never execute, even with closed matches')
+
             command = 'CLI_COUNTER=$(( ${CLI_COUNTER:-0} + 1 )); printf "%s" "$CLI_COUNTER"'
             first = data('run', sid, command, '--request-id', 'once')
             again = data('run', sid, command, '--request-id', 'once', '--no-wait')
@@ -79,7 +90,7 @@ def main():
 
             pending_sid = cli('create', 'shutdown test', '--cwd', str(work)).stdout.strip()
             data('run', pending_sid, 'sleep 30', '--no-wait')
-            cli('stop', '--shutdown-sessions')
+            cli('stop', '--shutdown-sessions', '--broker-only')
             started = False
             deadline = time.monotonic() + 5
             while (home / 'broker.sock').exists():
@@ -94,7 +105,7 @@ def main():
             check('broker shutdown/restart preserves history and deduplication without reviving closed shells')
         finally:
             if started:
-                cli('stop', '--shutdown-sessions')
+                cli('stop', '--shutdown-sessions', '--broker-only')
                 deadline = time.monotonic() + 5
                 while (home / 'broker.sock').exists() and time.monotonic() < deadline:
                     time.sleep(.05)

@@ -11,3 +11,5 @@ pub mod terminal;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 mod platform;
+
+pub mod selection;

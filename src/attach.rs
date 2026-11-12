@@ -210,6 +210,7 @@ pub fn run(
     session_id: Option<String>,
     cwd: Option<PathBuf>,
     no_replay: bool,
+    read_only: bool,
 ) -> Result<()> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         bail!("attach needs an interactive terminal on stdin and stdout");
@@ -217,10 +218,15 @@ pub fn run(
     if session_id.is_some() && cwd.is_some() {
         bail!("--cwd is only supported when creating a new session");
     }
-    agentbox::rpc::ensure_broker(&home)?;
+    if read_only && session_id.is_none() {
+        bail!("--read-only requires an existing session ID");
+    }
+    if !read_only {
+        agentbox::rpc::ensure_broker(&home)?;
+    }
     let client = RpcClient::new(&home)?;
     let session_id = match session_id {
-        Some(id) => id,
+        Some(id) => agentbox::selection::resolve(&client, &id)?,
         None => {
             let (rows, cols) = size().unwrap_or((30, 100));
             let session = call(
@@ -251,6 +257,9 @@ pub fn run(
     let mut after = if no_replay { through } else { 0 };
     let mut closed = snapshot["session"]["status"] == "closed";
     eprintln!("AgentBox session: {session_id}\nCtrl-] detaches and keeps the shell running; exit closes the shell.\nBoth operators share keystrokes; take turns typing.");
+    if read_only {
+        eprintln!("READ ONLY: keyboard input and terminal resizing are disabled; Ctrl-] detaches.");
+    }
     if !no_replay {
         eprintln!("Replaying retained terminal output (history is bounded).");
     }
@@ -282,7 +291,7 @@ pub fn run(
         if closed && events.len() < 200 {
             break;
         }
-        if !closed && Instant::now() >= next_resize {
+        if !read_only && !closed && Instant::now() >= next_resize {
             if let Some(dimensions) = size() {
                 if Some(dimensions) != last_size {
                     call(
@@ -322,7 +331,7 @@ pub fn run(
                 break;
             }
             let (text, detach) = keyboard.push(&bytes[..count]);
-            if !text.is_empty() {
+            if !read_only && !text.is_empty() {
                 call(
                     &client,
                     "input",

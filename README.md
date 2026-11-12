@@ -17,6 +17,15 @@ another operator or agent can inspect `agentbox logs SESSION_ID --follow` and
 send keystrokes with `agentbox input SESSION_ID 'command text' --newline`, using
 the same `--home`. Both operators control the same shell and must take turns typing.
 
+Session arguments accept a full ID, an exact session name, or a unique ID prefix
+of at least six characters. Ambiguous selectors fail without running the command;
+closed sessions also count when checking ambiguity. Use the full ID to disambiguate.
+
+For observation without controlling the shell, use
+`agentbox attach SESSION_ID --read-only --home "$PWD/.macos-demo"`.
+The observer receives output but cannot send keystrokes or resize the shared PTY.
+This is a client mode for avoiding accidental input, not a separate access permission.
+
 `Ctrl-]` detaches without closing the shell. Reconnect with
 `agentbox attach SESSION_ID --home "$PWD/.macos-demo"`; type `exit` in the shell
 to close it. Attaching to an existing session does not inject setup commands.
@@ -52,11 +61,11 @@ server or manual token entry is required. To shut down the broker and sessions
 without targeting a real HTTP port:
 
 ```sh
-$AB stop --home "$AB_HOME" --port 0 --shutdown-sessions
+$AB stop --home "$AB_HOME" --shutdown-sessions --broker-only
 ```
 
-In broker-only mode, this reports that HTTP stop was not confirmed, because no
-HTTP server is running; the broker shutdown request is still sent successfully.
+`--broker-only` does not contact HTTP. It acknowledges the shutdown request;
+it is not a process-exit receipt.
 
 To rerun the isolated CLI scenarios:
 

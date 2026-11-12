@@ -18,13 +18,15 @@ BIN = ROOT / 'target/debug/agentbox'
 
 
 class Attached:
-    def __init__(self, home, session=None):
+    def __init__(self, home, session=None, read_only=False):
         self.master, self.slave = pty.openpty()
         self.original = termios.tcgetattr(self.slave)
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
         args = [str(BIN), '--home', str(home), 'attach']
         if session:
             args += [session, '--no-replay']
+        if read_only:
+            args += ["--read-only"]
         self.process = subprocess.Popen(args, stdin=self.slave, stdout=self.slave,
                                         stderr=self.slave, env={**os.environ, 'TERM': 'xterm-256color'})
         self.output = b''
@@ -117,6 +119,19 @@ def main():
                 time.sleep(.05)
             print('PASS: local terminal resize reaches the broker PTY', flush=True)
 
+            observer = Attached(home, sid, read_only=True)
+            attached.append(observer)
+            observer.until(b'READ ONLY:')
+            observer.send(b'export OBSERVER_INJECTED=yes\r')
+            remote(sid, 'printf "OBSERVER_CHECK:%s\n" "${OBSERVER_INJECTED-unset}"')
+            observer.until(b'OBSERVER_CHECK:unset')
+            session = next(s for s in cli('sessions') if s['id'] == sid)
+            assert (session['rows'], session['cols']) == (38, 112)
+            observer.send(b'\x1d')
+            observer.finished()
+            print('PASS: read-only observer receives output without typing or changing PTY size', flush=True)
+
+
             remote(sid, "printf '\\033[6n\\033]52;c;ignored\\007'; printf 'QUERY_FILTERED\\n'")
             one.until(b'QUERY_FILTERED\r\n')
             assert b'\x1b[6n' not in one.output and b'\x1b]52' not in one.output
@@ -144,7 +159,7 @@ def main():
         finally:
             for instance in attached:
                 instance.dispose()
-            subprocess.run([str(BIN), '--home', str(home), '--port', '0', 'stop', '--shutdown-sessions'],
+            subprocess.run([str(BIN), '--home', str(home), '--port', '0', 'stop', '--shutdown-sessions', '--broker-only'],
                            capture_output=True, timeout=15)
             deadline = time.monotonic() + 5
             while (home / 'broker.sock').exists() and time.monotonic() < deadline:
