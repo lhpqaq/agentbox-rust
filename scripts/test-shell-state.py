@@ -41,7 +41,9 @@ def main():
             return json.loads(p.stdout)
         try:
             parent.until(b'PARENT>')
-            setup = f'''source {venv / 'bin/activate'}; eval "$(\"{BIN}\" shell-init zsh)"; SNAP_TEXT='space 中文 $quoted'; export RESTORE_ME='from parent'; typeset -a SNAP_ARRAY=('one two' three); typeset -A SNAP_MAP=(key 'value with spaces'); snap_function() {{ print -r -- "FUNC:$SNAP_TEXT"; }}; alias local_alias='print LOCAL_ALIAS'; alias -g AB_GLOBAL='| cat'; alias -s abtxt=cat; unsetopt autocd; setopt extendedglob; print SETUP_DONE'''
+            # Seed UTF-8 bytes with ASCII escapes: C-locale ZLE can corrupt raw
+            # multibyte keystrokes before the serializer ever receives a value.
+            setup = f'''source {venv / 'bin/activate'}; eval "$(\"{BIN}\" shell-init zsh)"; SNAP_TEXT=$'space \\344\\270\\255\\346\\226\\207 $quoted'; export RESTORE_ME='from parent'; typeset -a SNAP_ARRAY=('one two' three); typeset -A SNAP_MAP=(key 'value with spaces'); snap_function() {{ print -r -- "FUNC:$SNAP_TEXT"; }}; alias local_alias='print LOCAL_ALIAS'; alias -g AB_GLOBAL='| cat'; alias -s abtxt=cat; unsetopt autocd; setopt extendedglob; print SETUP_DONE'''
             parent.send(setup.encode()+b'\r')
             parent.until(b'SETUP_DONE\r\n')
             start=len(parent.output)
@@ -163,6 +165,20 @@ def main():
             finally:
                 pending_client.dispose()
             print('PASS: closing a pending import restores the client terminal, reports incomplete import and removes private files',flush=True)
+            insecure=base/'insecure-state.zsh'
+            insecure.write_text('SHOULD_NOT_IMPORT=yes\n')
+            insecure.chmod(0o644)
+            invalid_cases=[['--shell',zsh,'--state-file',str(insecure)],['--shell','/does/not/exist/zsh'],['--env','=invalid']]
+            for number, options in enumerate(invalid_cases):
+                missing_home=base/f'invalid-home-{number}'
+                rejected=module.Attached(missing_home,options=options,env=env)
+                try:
+                    rejected.finished(expected_code=1)
+                    assert not missing_home.exists(), 'invalid native configuration must not start a broker'
+                finally:
+                    rejected.dispose()
+            print('PASS: invalid shell, insecure state file and invalid environment fail before state/broker creation',flush=True)
+
 
         finally:
             parent.dispose()

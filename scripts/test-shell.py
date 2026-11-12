@@ -95,6 +95,13 @@ plugin_function() { printf 'PLUGIN_FUNCTION:%s\\n' "$PLUGIN_LOADED"; }
                             'ZSH_PLUGIN:_plugin_complete:user:_plugin_widget:1')
                     command(one, 'print -r -- "EDIT:\x18\x10"', 'EDIT:widget')
                 print(f'PASS: native {kind} loads startup, aliases/functions and current caller environment', flush=True)
+                # Interrupt actual foreground work without replacing the shell.
+                start = len(one.output)
+                one.send(b'printf "INTERRUPT_%s\\n" ready; sleep 30\r')
+                one.until(b'INTERRUPT_ready\r\n', start=start)
+                data('interrupt', sid)
+                command(one, 'printf "AFTER_INTERRUPT:%s\\n" "$PLUGIN_LOADED"', 'AFTER_INTERRUPT:yes')
+
                 command(one, 'LOCAL_VALUE=kept; export EXPORTED_VALUE=shared; live_function(){ printf "LIVE:%s:%s\\n" "$LOCAL_VALUE" "$EXPORTED_VALUE"; }; cd child; sleep 60 & printf \"STATE_%s\\n\" ready', 'STATE_ready')
                 # Prove state with independent client input before detaching.
                 start = len(one.output)
@@ -119,6 +126,20 @@ plugin_function() { printf 'PLUGIN_FUNCTION:%s\\n' "$PLUGIN_LOADED"; }
                 command(two, 'kill %1; wait; exit', '')
                 two.finished()
                 print(f'PASS: {kind} reconnect keeps PID, unexported/exported variables, functions, cwd and job', flush=True)
+            # Explicit clean mode skips user configuration for both supported shells.
+            for kind in ['bash', 'zsh']:
+                shell = shutil.which(kind)
+                sid = cli('create', 'clean-'+kind, '--shell', shell, '--no-rc', '--inherit-env',
+                    env={'HOME':str(user),'ZDOTDIR':str(user),'skip_global_compinit':'1'}).stdout.strip()
+                data('input',sid,'printf "CLEAN:%s\\n" "${PLUGIN_LOADED-unset}"','--newline')
+                deadline=time.monotonic()+5
+                while True:
+                    page=data('read',sid,'--max-bytes','1048576')
+                    if 'CLEAN:unset' in page['output']: break
+                    assert time.monotonic()<deadline,page['output']
+                    time.sleep(.03)
+                data('close',sid)
+            print('PASS: foreground interrupts preserve native shells and clean mode skips user startup files',flush=True)
             # No environment values should be placed in durable session metadata.
             assert 'fresh from caller' not in json.dumps(data('sessions'))
             print('PASS: environment values are absent from session metadata', flush=True)

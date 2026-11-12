@@ -87,3 +87,11 @@ AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-concurrenc
 Local 0.3.0 release checks passed the CLI, shared PTY, bulk-output and concurrent-client suites. The 9 MiB release check took about 8 seconds in one local run.
 `cargo install --path . --locked --offline --root TEMP_DIRECTORY` was also tested
 in an isolated prefix; the installed executable reported `agentbox 0.3.0`.
+
+
+Local 0.4.0 optimized-binary validation passed all seven runtime scripts: managed
+CLI, shared attach, native shells, Zsh state import, real plugins, bulk output and
+concurrent clients. The bulk fixture observed its complete 9 MiB with a bounded
+returned tail in 8.10 seconds in this run; this is a single local measurement.
+The C-locale state fixture seeds known UTF-8 bytes with ASCII escapes so it tests
+serialization separately from ZLE's locale-dependent keyboard decoding.
