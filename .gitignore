@@ -14,3 +14,6 @@ __pycache__/
 
 # Pinned third-party plugin fixtures used only by CI
 .ci-fixtures/
+
+# Private state directory used by the native-shell quick start
+.agentbox/
