@@ -31,6 +31,8 @@ def main():
                 executable = pathlib.Path(record['executable'])
     if executable is None:
         raise SystemExit('Cargo did not report the agentbox executable.')
+    if run('git', 'rev-parse', 'HEAD').decode().strip() != commit or run('git', 'status', '--porcelain', '--untracked-files=no').strip():
+        raise SystemExit('Source changed during the release build; commit changes and package again.')
     with tempfile.TemporaryDirectory(prefix='ab-release-check-') as temp:
         missing = pathlib.Path(temp) / 'missing-state'
         diagnostic = subprocess.run([str(executable), 'doctor', '--home', str(missing)],

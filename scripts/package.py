@@ -18,7 +18,7 @@ def package(repo, destination):
     if git(repo, 'status', '--porcelain', '--untracked-files=no').strip():
         raise ValueError('Tracked changes are not committed. Commit them before packaging.')
     commit = git(repo, 'rev-parse', 'HEAD').decode().strip()
-    archive = git(repo, 'archive', '--format=tar', 'HEAD')
+    archive = git(repo, 'archive', '--format=tar', commit)
     entries = {}
     with tarfile.open(fileobj=io.BytesIO(archive)) as source:
         for member in source:
