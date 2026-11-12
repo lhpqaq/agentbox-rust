@@ -21,6 +21,22 @@ Session arguments accept a full ID, an exact session name, or a unique ID prefix
 of at least six characters. Ambiguous selectors fail without running the command;
 closed sessions also count when checking ambiguity. Use the full ID to disambiguate.
 
+For a bounded JSON snapshot of an interactive shell (including SSH output), use:
+
+```sh
+$AB read SESSION_ID --home "$AB_HOME" --max-bytes 65536
+$AB read SESSION_ID --home "$AB_HOME" --after CURSOR
+```
+
+The returned `after` is the next call's cursor. Continue while `has_more` is true.
+`output` contains terminal text, including ANSI escapes encoded safely in JSON;
+it is a transcript, not a reconstructed terminal screen. Reads never send input.
+Pages preserve complete output events; if `next_event_bytes` exceeds your limit,
+increase `--max-bytes` (maximum 1 MiB) to make progress. Check
+`output_may_be_truncated` for possible retention loss. Cursors belong to one session
+and state directory; keep those alongside the cursor. A snapshot can be followed
+by another read to observe output that arrived later.
+
 For observation without controlling the shell, use
 `agentbox attach SESSION_ID --read-only --home "$PWD/.macos-demo"`.
 The observer receives output but cannot send keystrokes or resize the shared PTY.

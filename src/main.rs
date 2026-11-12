@@ -102,6 +102,14 @@ enum Commands {
     History {
         session_id: String,
     },
+    /// Read a bounded JSON transcript page without sending input to the shell.
+    Read {
+        session_id: String,
+        #[arg(long, default_value_t = 0)]
+        after: i64,
+        #[arg(long, default_value_t = 65536)]
+        max_bytes: usize,
+    },
     Logs {
         session_id: String,
         #[arg(long, default_value_t = 0)]
@@ -215,6 +223,7 @@ fn run() -> Result<()> {
                 | Commands::Rename { session_id, .. }
                 | Commands::Resize { session_id, .. }
                 | Commands::History { session_id }
+                | Commands::Read { session_id, .. }
                 | Commands::Logs { session_id, .. } => Some(session_id),
                 _ => None,
             };
@@ -316,6 +325,18 @@ fn run() -> Result<()> {
                 )?)?,
                 Commands::History { session_id } => {
                     print(&client.call("history", json!({"session_id":session_id}))?)?
+                }
+                Commands::Read {
+                    session_id,
+                    after,
+                    max_bytes,
+                } => {
+                    print(&agentbox::transcript::read(
+                        &client,
+                        &session_id,
+                        after,
+                        max_bytes,
+                    )?)?;
                 }
                 Commands::Logs {
                     session_id,

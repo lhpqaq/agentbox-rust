@@ -72,6 +72,30 @@ def main():
             assert large['output'].count('x') == 131072 and not large['output_truncated']
             check('128 KiB output crosses the Unix socket without truncation or disconnection')
 
+            transcript_sid = cli('create', 'transcript', '--cwd', str(work)).stdout.strip()
+            data('run', transcript_sid, "printf '%131072s' '' | tr ' ' x")
+            data('close', transcript_sid)
+            whole = data('read', transcript_sid, '--max-bytes', '1048576')
+            assert whole['has_more'] is False
+            assert whole['output_may_be_truncated'] is False
+            chunks, cursor = [], 0
+            for _ in range(100):
+                page = data('read', 'transcript', '--after', str(cursor), '--max-bytes', '65536')
+                assert page['output_bytes'] <= 65536
+                assert page['after'] >= cursor
+                chunks.append(page['output'])
+                cursor = page['after']
+                if not page['has_more']:
+                    break
+            else:
+                raise AssertionError('Transcript pagination did not terminate')
+            assert ''.join(chunks) == whole['output']
+            assert ''.join(chunks).count('x') >= 131072
+            assert data('read', transcript_sid, '--after', str(cursor))['output'] == ''
+            cli('read', transcript_sid, '--max-bytes', '0', success=False)
+            cli('read', transcript_sid, '--after', str(cursor + 100), success=False)
+            check('bounded transcript pages reconstruct output exactly and reject invalid cursors')
+
             running = data('run', sid, 'sleep 30', '--no-wait', '--request-id', 'interrupt')
             snapshot = data('wait', sid, running['id'], '--timeout', '0', success=False)
             assert snapshot['status'] == 'running' and snapshot['timed_out'] is True

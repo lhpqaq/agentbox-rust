@@ -107,6 +107,9 @@ def main():
             logs = subprocess.check_output([str(BIN), '--home', str(home), 'logs', sid], text=True)
             transcript = ''.join(json.loads(line).get('data', {}).get('text', '') for line in logs.splitlines())
             assert 'LOCAL_OK:from_local' in transcript and 'REMOTE_OK:from_local' in transcript
+            page = cli('read', sid)
+            assert 'LOCAL_OK:from_local' in page['output'] and 'REMOTE_OK:from_local' in page['output']
+            assert not page['output_may_be_truncated']
             print('PASS: independent CLI reads local output and types into the same shell and environment', flush=True)
 
             fcntl.ioctl(one.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 38, 112, 0, 0))
