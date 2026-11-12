@@ -803,6 +803,10 @@ PROMPT_COMMAND=__ab_prompt
         let deadline = Instant::now() + Duration::from_millis(750);
         let mut reaped = false;
         loop {
+            // Darwin can defer terminal teardown while slave output is pending.
+            // Keep draining bounded PTY batches while waiting for actual reaping;
+            // waiting first and draining only afterward can strand cleanup.
+            self.read_output(false);
             match self.child.try_wait() {
                 Ok(Some(status)) => {
                     code = code.or_else(|| exit_code(status));
@@ -1366,6 +1370,35 @@ mod tests {
         );
         // SIGKILL must never be sent when a numeric PID no longer matches.
         signal_identity(pid, &wrong, libc::SIGKILL).unwrap();
+    }
+    #[test]
+    fn real_pty_close_while_output_is_pending_reaps_every_child() {
+        for _ in 0..16 {
+            let (_dir, t, rx) = terminal();
+            t.input("while :; do printf 'pending-output\\n'; done\n")
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let event = rx
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .unwrap();
+                if matches!(event, TerminalEvent::Output { text, .. } if text.contains("pending-output\r\n"))
+                {
+                    break;
+                }
+            }
+            let pid = t.pid() as i32;
+            t.close().unwrap();
+            let mut status = 0;
+            assert_eq!(
+                unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) },
+                -1
+            );
+            assert_eq!(
+                io::Error::last_os_error().raw_os_error(),
+                Some(libc::ECHILD)
+            );
+        }
     }
     #[test]
     fn real_pty_close_reaps_shell_and_stops_background_session_job() {
