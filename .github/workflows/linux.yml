@@ -42,3 +42,4 @@ jobs:
         env:
           AGENTBOX_TEST_BIN: ${{ github.workspace }}/target/release/agentbox
       - run: bash scripts/package.sh
+      - run: python3 scripts/package-release.py

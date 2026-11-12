@@ -7,10 +7,12 @@ import pathlib
 import pty
 import re
 import select
+import socket
 import struct
 import subprocess
 import tempfile
 import termios
+import threading
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -45,8 +47,8 @@ class Attached:
     def send(self, data):
         os.write(self.master, data)
 
-    def finished(self):
-        assert self.process.wait(timeout=10) == 0
+    def finished(self, expected_code=0):
+        assert self.process.wait(timeout=10) == expected_code
         restored = termios.tcgetattr(self.slave)
         expected = self.original.copy()
         # Darwin sets this kernel-managed flag on raw -> canonical transition.
@@ -64,6 +66,71 @@ class Attached:
                 self.process.wait()
         os.close(self.master)
         os.close(self.slave)
+
+
+def disconnected_input(base, attached):
+    # A fake authenticated endpoint accepts the input, then drops the response.
+    # No shell is launched, and the real disposable broker is not interrupted.
+    home = base / 'fault'
+    home.mkdir(mode=0o700)
+    (home / 'token').write_text('a' * 64)
+    (home / 'token').chmod(0o600)
+    sid = 'b' * 32
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(home / 'broker.sock'))
+    listener.listen()
+    listener.settimeout(.1)
+    stopped = threading.Event()
+    requests, failures = [], []
+
+    def serve():
+        try:
+            while not stopped.is_set():
+                try:
+                    connection, _ = listener.accept()
+                except socket.timeout:
+                    continue
+                with connection:
+                    connection.settimeout(3)
+                    with connection.makefile('rb') as stream:
+                        request = json.loads(stream.readline())
+                    assert request['token'] == 'a' * 64
+                    method = request['method']
+                    requests.append(request)
+                    if method == 'input':
+                        continue
+                    if method == 'status':
+                        result = {'version': '0.3.0'}
+                    elif method == 'sync':
+                        result = {'last_seq': 0, 'first_seq': 0,
+                                  'session': {'id': sid, 'status': 'interactive'}}
+                    elif method == 'events':
+                        result = []
+                    elif method == 'resize':
+                        result = {'ok': True}
+                    else:
+                        raise AssertionError(f'Unexpected method: {method}')
+                    connection.sendall(json.dumps({'ok': True, 'result': result}).encode() + b'\n')
+        except Exception as error:
+            failures.append(error)
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    try:
+        client = Attached(home, sid)
+        attached.append(client)
+        client.until(b'Ctrl-] detaches')
+        client.send(b'printf NOT_EXECUTED_BY_TEST\r')
+        client.until(b'input may have been delivered; it was not retried')
+        client.finished(expected_code=1)
+    finally:
+        stopped.set()
+        thread.join(timeout=5)
+        listener.close()
+    assert not thread.is_alive() and not failures, failures
+    inputs = [r for r in requests if r['method'] == 'input']
+    assert len(inputs) == 1, f'Uncertain input was retried: {len(inputs)}'
+    print('PASS: accepted input with a lost response is never retried; attach reports uncertainty and restores the local tty', flush=True)
 
 
 def main():
@@ -150,6 +217,20 @@ def main():
             assert next(s for s in cli('sessions') if s['id'] == sid)['status'] != 'closed'
             print('PASS: Ctrl-] restores the local tty while preserving the remote shell', flush=True)
 
+            signalled = Attached(home, sid, read_only=True)
+            attached.append(signalled)
+            signalled.until(b'READ ONLY:')
+            # Wait until the raw-mode guard is installed before sending SIGTERM.
+            deadline = time.monotonic() + 5
+            while termios.tcgetattr(signalled.slave)[3] & termios.ICANON:
+                assert time.monotonic() < deadline
+                time.sleep(.01)
+            signalled.process.terminate()
+            signalled.finished()
+            assert next(s for s in cli('sessions') if s['id'] == sid)['status'] != 'closed'
+            print('PASS: SIGTERM detaches the observer, restores tty settings and preserves the shared shell', flush=True)
+
+
             two = Attached(home, sid)
             attached.append(two)
             two.until(b'Ctrl-] detaches')
@@ -159,6 +240,7 @@ def main():
             two.finished()
             assert next(s for s in cli('sessions') if s['id'] == sid)['status'] == 'closed'
             print('PASS: reattach preserves state; shell exit closes the session and restores the tty', flush=True)
+            disconnected_input(pathlib.Path(temp), attached)
         finally:
             for instance in attached:
                 instance.dispose()

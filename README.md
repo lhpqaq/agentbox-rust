@@ -149,3 +149,11 @@ The latest broker serves transcript reads in one bounded journal snapshot, witho
 including command history. New clients automatically fall back to the original
 read-only interfaces when connecting to an older running broker. Existing shells
 do not need to be restarted to use CLI or MCP reads.
+
+## Package a native executable
+
+Run `python3 scripts/package-release.py` from a clean committed checkout. It
+builds the release executable using Cargo.lock, checks its version and read-only
+diagnostics, and creates a host-native ZIP in `dist/` with the binary, license,
+usage notes, source commit and SHA-256 checksums. It does not install globally,
+restart brokers, sign/notarize binaries or create a GitHub release.
