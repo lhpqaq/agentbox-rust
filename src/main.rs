@@ -39,7 +39,15 @@ enum Commands {
     /// Diagnose local configuration and broker connectivity without changing state.
     Doctor,
     Status,
-    Sessions,
+    /// List persistent sessions; JSON by default.
+    Sessions {
+        /// Hide closed sessions.
+        #[arg(long)]
+        active: bool,
+        /// Show a readable terminal list instead of JSON.
+        #[arg(long)]
+        table: bool,
+    },
     /// Share a native terminal; omit SESSION_ID to create a new shell. Ctrl-] detaches.
     Attach {
         session_id: Option<String>,
@@ -133,6 +141,31 @@ enum Commands {
 fn print(v: &Value) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(v)?);
     Ok(())
+}
+fn print_session_table(records: &[Value]) {
+    if records.is_empty() {
+        println!("No matching sessions.");
+        return;
+    }
+    println!("{:<32}  {:<12}  NAME / DIRECTORY", "SESSION ID", "STATE");
+    for record in records {
+        // Names/paths may contain terminal controls. Render them visibly without
+        // allowing a session name to clear the screen or forge another row.
+        let cell = |key: &str| {
+            record[key]
+                .as_str()
+                .unwrap_or("?")
+                .escape_debug()
+                .to_string()
+        };
+        println!(
+            "{:<32}  {:<12}  {}",
+            cell("id"),
+            cell("status"),
+            cell("name")
+        );
+        println!("{:48}{}", "", cell("cwd"));
+    }
 }
 fn validate_timeout(t: f64) -> Result<Duration> {
     if !t.is_finite() || !(0.0..=3600.0).contains(&t) {
@@ -245,7 +278,18 @@ fn run() -> Result<()> {
             }
             match command {
                 Commands::Status => print(&client.call("status", json!({}))?)?,
-                Commands::Sessions => print(&client.call("sessions", json!({}))?)?,
+                Commands::Sessions { active, table } => {
+                    let mut sessions = client.call("sessions", json!({}))?;
+                    let records = sessions.as_array_mut().context("Invalid session list")?;
+                    if active {
+                        records.retain(|s| s["status"] != "closed");
+                    }
+                    if table {
+                        print_session_table(records);
+                    } else {
+                        print(&sessions)?;
+                    }
+                }
                 Commands::Create {
                     name,
                     cwd,

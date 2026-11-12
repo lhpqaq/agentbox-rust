@@ -19,6 +19,9 @@ another operator or agent can inspect `agentbox logs SESSION_ID --follow` and
 send keystrokes with `agentbox input SESSION_ID 'command text' --newline`, using
 the same `--home`. Both operators control the same shell and must take turns typing.
 
+Find a session with `agentbox sessions --active --table --home "$PWD/.macos-demo"`.
+Omit `--active` to include closed history, or omit `--table` for machine-readable JSON.
+
 Session arguments accept a full ID, an exact session name, or a unique ID prefix
 of at least six characters. Ambiguous selectors fail without running the command;
 closed sessions also count when checking ambiguity. Use the full ID to disambiguate.
@@ -141,3 +144,8 @@ and the commit identity. Ignored and untracked local files are excluded. Output:
 `dist/AgentBox-Rust-source.zip` and its `.sha256` file. Repeated packaging of the
 same commit in the same environment produces identical bytes. Packaging checks
 archive integrity; run the verification scripts to check behavior.
+
+The latest broker serves transcript reads in one bounded journal snapshot, without
+including command history. New clients automatically fall back to the original
+read-only interfaces when connecting to an older running broker. Existing shells
+do not need to be restarted to use CLI or MCP reads.

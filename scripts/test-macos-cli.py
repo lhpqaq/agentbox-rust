@@ -61,6 +61,15 @@ def main():
             data('close', duplicate)
             cli('run', 'CLI test', 'true', success=False)
             check('names and unique ID prefixes resolve; ambiguous names never execute, even with closed matches')
+            live_ids = {item['id'] for item in data('sessions', '--active')}
+            assert sid in live_ids and duplicate not in live_ids
+            display_sid = cli('create', '中文\n\x1b[31mname', '--cwd', str(work)).stdout.strip()
+            table = cli('sessions', '--table', '--active').stdout
+            assert display_sid in table and '中文' in table and '\x1b' not in table
+            assert '中文\n' not in table
+            data('close', display_sid)
+            check('active session listing excludes closed history and renders terminal controls safely')
+
 
             command = 'CLI_COUNTER=$(( ${CLI_COUNTER:-0} + 1 )); printf "%s" "$CLI_COUNTER"'
             first = data('run', sid, command, '--request-id', 'once')

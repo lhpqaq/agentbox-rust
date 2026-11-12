@@ -115,6 +115,18 @@ impl Core {
                 }
                 Ok(out)
             }
+            "read" => {
+                let after = number(&p, "after", 0, 0, i64::MAX as u64)? as i64;
+                let cap = number(&p, "max_bytes", 65536, 1, 1024 * 1024)? as usize;
+                // Hold the journal lock across metadata, output and retention:
+                // one bounded response, with no command-history payload or race.
+                let db = self.db()?;
+                let cursor = db.cursor(id)?;
+                let mut snapshot = cursor.clone();
+                snapshot["session"] = db.session(id)?;
+                let events = json!(db.events(id, after, 64)?);
+                crate::transcript::from_snapshot(&snapshot, &events, &cursor, after, cap)
+            }
             "cursor" => self.db()?.cursor(id),
             "history" => Ok(json!(self.db()?.commands(id)?)),
             "command" => self.db()?.command(id, text(&p, "command_id")?),
@@ -533,6 +545,40 @@ mod tests {
         assert!(!valid_key(""));
         assert!(dimensions(&json!({"rows":true})).is_err());
         assert!(bounded_text(&json!({"command":" \n"}), "command", 262144, true).is_err());
+    }
+    #[test]
+    fn transcript_snapshot_excludes_command_history_and_is_bounded() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = config::init_home(&temp.path().join("s")).unwrap();
+        let mut core = Core::new(&home).unwrap();
+        {
+            let mut db = core.db().unwrap();
+            db.update_session(
+                json!({"id":"s","status":"closed","command_count":0}),
+                "session_created",
+            )
+            .unwrap();
+            db.start_command(json!({"id":"c","session_id":"s","command":"history-only-secret","status":"running"})).unwrap();
+            db.output("s", "hello".into(), Some("c".into()), false)
+                .unwrap();
+        }
+        let page = core
+            .dispatch("read", json!({"session_id":"s","max_bytes":5}))
+            .unwrap();
+        assert_eq!(page["output"], "hello");
+        assert_eq!(page["output_may_be_truncated"], false);
+        assert!(!page.to_string().contains("history-only-secret"));
+        let small = core
+            .dispatch("read", json!({"session_id":"s","max_bytes":1}))
+            .unwrap();
+        assert_eq!(small["output"], "");
+        assert_eq!(small["next_event_bytes"], 5);
+        assert_eq!(
+            core.dispatch("read", json!({"session_id":"s","max_bytes":0}))
+                .unwrap_err()
+                .code,
+            422
+        );
     }
     #[test]
     fn unknown_session_is_not_created() {

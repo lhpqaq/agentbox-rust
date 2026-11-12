@@ -6,13 +6,49 @@ use crate::{
 use serde_json::{json, Value};
 
 pub fn read(client: &RpcClient, id: &str, after: i64, max_bytes: usize) -> Result<Value> {
+    read_using(id, after, max_bytes, |method, params| {
+        client.call(method, params)
+    })
+}
+
+fn read_using(
+    id: &str,
+    after: i64,
+    max_bytes: usize,
+    mut call: impl FnMut(&str, Value) -> Result<Value>,
+) -> Result<Value> {
     if after < 0 || !(1..=1024 * 1024).contains(&max_bytes) {
         return Err(AbError::new(
             422,
             "after must be nonnegative and max-bytes must be 1..1048576",
         ));
     }
-    let snapshot = client.call("sync", json!({"session_id":id}))?;
+    match call(
+        "read",
+        json!({"session_id":id,"after":after,"max_bytes":max_bytes}),
+    ) {
+        Ok(result) => return Ok(result),
+        Err(error)
+            if error.from_broker
+                && error.code == 404
+                && error.message == "Unknown broker method" => {}
+        Err(error) => return Err(error),
+    }
+    // Older brokers can stay running with their existing shells. Only the exact
+    // unsupported-method response selects this read-only compatibility path.
+    let snapshot = call("sync", json!({"session_id":id}))?;
+    let events = call("events", json!({"session_id":id,"after":after,"limit":64}))?;
+    let retained = call("cursor", json!({"session_id":id}))?;
+    from_snapshot(&snapshot, &events, &retained, after, max_bytes)
+}
+
+pub(crate) fn from_snapshot(
+    snapshot: &Value,
+    events: &Value,
+    retained: &Value,
+    after: i64,
+    max_bytes: usize,
+) -> Result<Value> {
     let through = snapshot["last_seq"]
         .as_i64()
         .ok_or_else(|| AbError::new(502, "Missing snapshot cursor"))?;
@@ -22,11 +58,9 @@ pub fn read(client: &RpcClient, id: &str, after: i64, max_bytes: usize) -> Resul
             "Cursor is ahead of this session; check the session ID and home",
         ));
     }
-    let events = client.call("events", json!({"session_id":id,"after":after,"limit":64}))?;
-    let mut result = page(&events, after, through, max_bytes)?;
+    let mut result = page(events, after, through, max_bytes)?;
     // A second retention observation detects pruning during the read. Global
     // sequence gaps do not prove loss, so report uncertainty rather than invent it.
-    let retained = client.call("cursor", json!({"session_id":id}))?;
     let first = retained["first_seq"]
         .as_i64()
         .ok_or_else(|| AbError::new(502, "Missing retention cursor"))?;
@@ -83,6 +117,45 @@ fn page(events: &Value, after: i64, through: i64, max_bytes: usize) -> Result<Va
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn new_broker_uses_one_read_and_legacy_broker_remains_compatible() {
+        let mut calls = Vec::new();
+        let result = read_using("s", 0, 100, |method, _| {
+            calls.push(method.to_owned());
+            Ok(json!({"output":"fast"}))
+        })
+        .unwrap();
+        assert_eq!(result["output"], "fast");
+        assert_eq!(calls, ["read"]);
+        calls.clear();
+        let result = read_using("s", 0, 100, |method, _| {
+            calls.push(method.to_owned());
+            match method {
+                "read" => { let mut e = AbError::new(404, "Unknown broker method"); e.from_broker = true; Err(e) },
+                "sync" => Ok(json!({"session":{"id":"s"},"first_seq":1,"last_seq":2})),
+                "events" => Ok(json!([{"seq":1,"type":"session_created"},{"seq":2,"type":"output","data":{"text":"legacy"}}])),
+                "cursor" => Ok(json!({"first_seq":1,"last_seq":2})),
+                _ => panic!("unexpected method"),
+            }
+        }).unwrap();
+        assert_eq!(calls, ["read", "sync", "events", "cursor"]);
+        assert_eq!(result["output"], "legacy");
+        assert_eq!(result["output_may_be_truncated"], false);
+    }
+    #[test]
+    fn transport_or_session_errors_never_trigger_fallback() {
+        for message in ["Session not found", "Connection interrupted"] {
+            let mut calls = 0;
+            let result = read_using("s", 0, 100, |_, _| {
+                calls += 1;
+                let mut error = AbError::new(404, message);
+                error.from_broker = true;
+                Err(error)
+            });
+            assert!(result.is_err());
+            assert_eq!(calls, 1);
+        }
+    }
     #[test]
     fn bounded_pages_never_skip_or_split_unicode_output() {
         let events = json!([
