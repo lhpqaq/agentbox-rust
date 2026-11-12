@@ -295,7 +295,7 @@ fn http_restart_mcp_and_live_state() {
             .as_array()
             .unwrap()
             .len(),
-        8
+        9
     );
     writeln!(input,"{}",json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"agentbox_sessions","arguments":{}}})).unwrap();
     line.clear();
@@ -304,6 +304,26 @@ fn http_restart_mcp_and_live_state() {
         serde_json::from_str::<Value>(&line).unwrap()["result"]["isError"],
         false
     );
+    let mut cursor = 0;
+    let mut transcript = String::new();
+    for request_id in 4..24 {
+        writeln!(input,"{}",json!({"jsonrpc":"2.0","id":request_id,"method":"tools/call","params":{"name":"agentbox_read","arguments":{"session_id":id,"after":cursor,"max_output_bytes":65536}}})).unwrap();
+        line.clear();
+        output.read_line(&mut line).unwrap();
+        let response: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(response["result"]["isError"], false);
+        let payload: Value =
+            serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(payload["output_truncated"], false);
+        let page = &payload["result"];
+        transcript.push_str(page["output"].as_str().unwrap());
+        cursor = page["after"].as_i64().unwrap();
+        if page["has_more"] == false {
+            break;
+        }
+    }
+    assert!(transcript.contains("interactive:reply"));
     drop(input);
     assert!(mcp.wait().unwrap().success());
     assert_eq!(

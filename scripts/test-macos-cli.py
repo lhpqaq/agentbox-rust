@@ -82,8 +82,15 @@ def main():
             data('run', transcript_sid, "printf '%131072s' '' | tr ' ' x")
             data('close', transcript_sid)
             whole = data('read', transcript_sid, '--max-bytes', '1048576')
-            assert whole['has_more'] is False
             assert whole['output_may_be_truncated'] is False
+            reference = whole['output']
+            for _ in range(100):
+                if not whole['has_more']:
+                    break
+                whole = data('read', transcript_sid, '--after', str(whole['after']), '--max-bytes', '1048576')
+                reference += whole['output']
+            else:
+                raise AssertionError('Reference transcript pagination did not terminate')
             chunks, cursor = [], 0
             for _ in range(100):
                 page = data('read', 'transcript', '--after', str(cursor), '--max-bytes', '65536')
@@ -95,7 +102,7 @@ def main():
                     break
             else:
                 raise AssertionError('Transcript pagination did not terminate')
-            assert ''.join(chunks) == whole['output']
+            assert ''.join(chunks) == reference
             assert ''.join(chunks).count('x') >= 131072
             assert data('read', transcript_sid, '--after', str(cursor))['output'] == ''
             cli('read', transcript_sid, '--max-bytes', '0', success=False)

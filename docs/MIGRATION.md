@@ -15,11 +15,11 @@ This is a separate implementation and separate state directory, not an in-place 
 | Retention | 20,000 events / 8 MiB event payload per session; 500 finished commands / 4 MiB metadata | Retains active command separately; pruning runs inside journal transactions |
 | Limits | 24 live sessions, 256 total retained sessions/home, 10,000 request keys/session | No archived-session deletion command; choose new home for genuinely new work |
 | CLI | Rust executable directly uses Unix socket | No Python SDK; no --url; outputs JSON; failures return nonzero |
-| MCP | Same eight tool names and newline JSON-RPC | Direct Unix broker instead of HTTP SDK; actual host acceptance unverified |
+| MCP | Original eight tools plus agentbox_read; newline JSON-RPC | Direct Unix broker instead of HTTP SDK; actual host acceptance unverified |
 | Remote use | Can run executable on remote Linux computer | No remote CLI URL, built-in SSH integration, reconnect guarantee, or tested SSH setup |
 
 Data bounds apply to retained rows, not exact SQLite file size or a strict global RAM quota. SQLite may retain freed pages. A single currently active command and event may temporarily exceed configured test limits; defaults allow the maximum request size. MCP has its own smaller output cap.
 
 Raw command limit is 256 KiB UTF-8, input is 64 KiB, no NUL. The serialized envelope also has a cap: HTTP 300 KiB, broker RPC 400 KiB, MCP 256 KiB. JSON escaping and metadata consume space, so some strings below the raw limit are still too large for a transport. Oversized requests are rejected, not silently split or retried.
 
-The Rust package is source-only and uncompiled at delivery. Feature descriptions describe implementation intent, not a claim of complete compatibility or production readiness.
+The original Rust source package was delivered uncompiled. This adapted repository has since been built and tested on Linux and macOS; see VERIFICATION.md for current evidence and remaining limits. This does not imply full behavioral compatibility with the Python implementation.

@@ -1,45 +1,62 @@
-# Verification record
+# Verification
 
-Date: 2026-11-07. This record describes this Rust source package, not earlier Python validation.
+Updated: 2026-11-12. This file describes the adapted Linux/macOS project.
+The original uncompiled-package record is preserved in
+[UPSTREAM-VERIFICATION.md](UPSTREAM-VERIFICATION.md).
 
-## Actually executed
+## Current evidence
 
-- Existing source inspected: Python broker/PTY, storage, API/MCP, CLI, browser modules and original regression tests.
-- Independent static source review; corrections made to completion/UI statuses, raw Ctrl-C semantics, missing-prompt completion, retention size/atomicity, wait deadlines/completeness, token publication/file checks, spawn classification and process cleanup.
-- Six web/test-*.mjs files passed against the included JS and vendored xterm. See `frontend-test-results.txt` for actual output. This covers pure/mock/parser behavior, not a real browser running the server.
-- Archive file inventory and CRC integrity are checked when packaging.
+- Local macOS: formatting, all-target checking, Rust tests, clippy with warnings
+  denied, frontend parser/mock tests, and source-packaging regression pass.
+- Disposable broker CLI tests cover persistent shell state, request deduplication,
+  names/ID prefixes, ambiguous selection refusal, diagnostics, exit codes,
+  output paging, interruption, raw input and broker restart.
+- Native PTY tests cover consecutive prompts, shared keyboard/environment,
+  read-only observation, resize, Ctrl-C, query filtering, detach/reattach and
+  local terminal restoration.
+- Opt-in live tests cover HTTP authentication and restart, MCP stdio discovery
+  and shared transcript reads, and closed-peer RPC buffering/deadlines.
+- The 9 MiB bulk-output test verifies command completion, observed byte count,
+  bounded returned tail and server-retention warnings. A local debug run took
+  about 14 seconds; this is not a general performance guarantee.
+- [Linux and macOS CI for 24fb766](https://github.com/lhpqaq/agentbox-rust/actions/runs/43240848428)
+  passed, including the bulk-output and native PTY checks and release builds.
+  Later commits must be assessed using their own CI result.
 
-## Not executed
+## Reproduce
 
-- `cargo fmt`, dependency resolution, `cargo check`, Rust compilation, Rust unit/integration tests, `cargo clippy`, release build.
-- Rust PTY or database runtime behavior. Tests exist but have not run.
-- Unix socket or live TCP HTTP tests, HTTP restart preservation, actual SSE stream, actual MCP host integration.
-- Browser rendering/accessibility/interaction on a running app; macOS, Windows/WSL2 or SSH.
-
-Reason: Rust compiler/Cargo are absent from the managed build environment. No toolchain was downloaded or installed while permission was pending. Socket creation was restricted in the original environment; the Rust rewrite has not attempted to bypass that restriction. Passing JavaScript tests must not be represented as passing Rust backend checks.
-
-## First verification on an authorized Linux machine
-
-Install/use the current stable Rust toolchain through your trusted official process, with rustfmt and clippy, and a C compiler. This package never installs tools automatically. Then:
-
-```sh
-cargo fmt
-./scripts/verify.sh
-cargo build --release
-```
-
-The default tests do not open sockets. They include real Bash/PTY tests, SQLite transaction/recovery tests, config permissions, direct Core tests, offline HTTP router tests and MCP protocol/observation tests. They can start harmless local Bash commands and write temporary files; use a permitted test environment. Node is needed only for frontend tests. Source is not yet rustfmt-formatted, so format before running the fmt check. The code may need compile/test corrections; it is not a verified release.
-
-After a successful dependency resolution, retain Cargo.lock, then use `cargo ... --locked` for reproducibility. No resolved lockfile is included in this uncompiled source draft.
-
-## Optional live integration test
-
-Only on a Linux machine where local sockets and PTYs are allowed, explicitly enable:
+Prerequisites: a supported Linux or macOS host, Rust/Cargo with rustfmt and clippy,
+a C compiler, Bash, Python 3, Git and Node.js. No script installs dependencies.
+Use the committed Cargo.lock.
 
 ```sh
-AGENTBOX_ALLOW_SOCKET_TESTS=1 cargo test --test local_e2e -- --ignored --test-threads=1
+bash scripts/verify.sh
+cargo build --locked
+python3 scripts/test-macos-cli.py
+python3 scripts/test-attach.py
+python3 scripts/test-bulk-output.py
+AGENTBOX_ALLOW_SOCKET_TESTS=1 cargo test --locked --test local_e2e -- --ignored --test-threads=1
+cargo build --locked --release
+bash scripts/package.sh
 ```
 
-The ignored test creates a disposable private home, starts its own broker/HTTP process on an ephemeral loopback port, verifies HTTP authentication, creates a test shell, checks state while HTTP is down, restarts HTTP, resumes a running `read`, checks real MCP stdio discovery/listing and closes the session. Cleanup is scoped to that disposable instance. It does not target your normal home. **This test has never been run here.**
+The default verification starts harmless local Bash/PTY processes and uses
+SQLite/temp files, but does not open sockets. The remaining commands use their
+own temporary private homes and local sockets. They never target the user's
+normal AgentBox home. `test-macos-cli.py` retains its historical name but runs
+on both supported platforms. Packaging requires clean committed tracked files;
+it excludes untracked and ignored files and does not imply runtime validation.
 
-Before relying on the UI, manually check unlock/lock, create/rename/close, duplicate clicks, command failure, Ctrl-C, raw input, resize, long output, stream disconnect/reconnect, browser refresh, session switching during output, failed submissions without automatic retries, and refusal of unsafe terminal links. Verify the actual MCP host's approval UI separately.
+## Coverage limits
+
+Automated frontend tests cover parser, input provenance, replay and retention
+logic. They do not establish real-browser visual or accessibility acceptance.
+Actual MCP host approval UI, Windows/WSL-specific behavior, alternate Linux
+architectures/distributions and remote SSH server administration are not covered
+by this suite. Shared-terminal tests use local shells and do not connect to a
+user's production SSH session.
+
+AgentBox is not a sandbox. A broker/machine restart does not restore running
+processes. Raw input permanently disables structured run for that session.
+Output retention is finite. Native attach streams a transcript rather than
+reconstructing a full screen and filters terminal device/clipboard controls.

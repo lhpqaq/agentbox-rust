@@ -1,6 +1,8 @@
 # AgentBox Rust — Linux and macOS
 
-This is a Linux and macOS adaptation of `AgentBox-Rust-source-unverified.zip`.
+AgentBox keeps Bash terminals running in a local broker so a person and an agent
+can view and operate the same shell through a native terminal, CLI or MCP.
+This repository adapts `AgentBox-Rust-source-unverified.zip` for Linux and macOS.
 See [Linux verification](docs/LINUX.md) for the Linux checks and setup.
 See [macOS verification](docs/MACOS.md) for actual checks and limitations.
 The [original package README](docs/UPSTREAM-README.md) is retained for provenance;
@@ -24,8 +26,8 @@ closed sessions also count when checking ambiguity. Use the full ID to disambigu
 For a bounded JSON snapshot of an interactive shell (including SSH output), use:
 
 ```sh
-$AB read SESSION_ID --home "$AB_HOME" --max-bytes 65536
-$AB read SESSION_ID --home "$AB_HOME" --after CURSOR
+./target/debug/agentbox read SESSION_ID --home "$PWD/.macos-demo" --max-bytes 65536
+./target/debug/agentbox read SESSION_ID --home "$PWD/.macos-demo" --after CURSOR
 ```
 
 The returned `after` is the next call's cursor. Continue while `has_more` is true.
@@ -53,7 +55,7 @@ for live output only. Terminal device queries, OSC/DCS and unknown CSI operation
 are filtered to prevent automatic terminal replies or clipboard operations.
 Programs needing those features may not work fully. Raw keyboard input uses the
 broker's Unicode API; NUL is omitted and invalid UTF-8 is replaced. After raw
-input, agents should continue using `input`/`logs` rather than structured `run`.
+input, agents should continue using `input` with `read`/`logs` rather than structured `run`.
 
 Native PTY checks: `python3 scripts/test-attach.py` (requires local Unix sockets).
 

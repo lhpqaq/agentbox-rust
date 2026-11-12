@@ -22,10 +22,7 @@ pub fn read(client: &RpcClient, id: &str, after: i64, max_bytes: usize) -> Resul
             "Cursor is ahead of this session; check the session ID and home",
         ));
     }
-    let events = client.call(
-        "events",
-        json!({"session_id":id,"after":after,"limit":1000}),
-    )?;
+    let events = client.call("events", json!({"session_id":id,"after":after,"limit":64}))?;
     let mut result = page(&events, after, through, max_bytes)?;
     // A second retention observation detects pruning during the read. Global
     // sequence gaps do not prove loss, so report uncertainty rather than invent it.

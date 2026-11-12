@@ -1,6 +1,6 @@
 # Rust HTTP API
 
-The server binds only `127.0.0.1`, on the configured nonzero port. `/health` and bundled static assets are public, but all `/api/` endpoints require `Authorization: Bearer <private token>`. Host must be loopback with the exact configured port. Browser Origin, when present, must exactly match `http://<Host>`; cross-site fetches are rejected. There is no CORS allowance. Never expose this API through a public proxy or share its token: commands run as the broker's Linux user, without sandboxing.
+The server binds only `127.0.0.1`, on the configured nonzero port. `/health` and bundled static assets are public, but all `/api/` endpoints require `Authorization: Bearer <private token>`. Host must be loopback with the exact configured port. Browser Origin, when present, must exactly match `http://<Host>`; cross-site fetches are rejected. There is no CORS allowance. Never expose this API through a public proxy or share its token: commands run as the broker's local user, without sandboxing.
 
 JSON bodies are limited to 300 KiB, reject unknown fields, invalid types, duplicate keys, and out-of-range values. Input supports only `source: "user"`; terminal-generated device replies are intentionally disabled. Binary tokens are never logged. Responses include no-store, nosniff, frame denial and a restrictive Content Security Policy. Static assets are compiled into the binary and selected from an explicit allowlist; filesystem paths are never served.
 
@@ -29,6 +29,6 @@ The path/body/event contract follows the Python version. Host validation is tigh
 
 ## Platform support
 
-This backend currently supports Linux only. The PTY/process implementation uses Linux facilities including pipe2 and pidfd; generic Unix or macOS compatibility is not claimed.
+This backend supports Linux and macOS. Platform-specific PTY/process identity and filesystem helpers are tested on both through CI. Other operating systems are not supported. See VERIFICATION.md for test commands and coverage limits.
 
 The 256-KiB command and 64-KiB input limits apply to decoded UTF-8 text; the entire serialized HTTP body must also fit 300 KiB. JSON escaping and metadata count toward the body limit. A string below its decoded limit can therefore still be rejected as too large. The broker RPC envelope has a separate 400-KiB limit.
