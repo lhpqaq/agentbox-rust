@@ -28,7 +28,7 @@ The Rust bridge preserves tool names, protocol framing, and safety semantics, bu
 
 ## Platform support
 
-This backend currently supports Linux only. The PTY/process implementation uses Linux facilities including pipe2 and pidfd; generic Unix or macOS compatibility is not claimed.
+The broker and MCP bridge support Linux and macOS. CI exercises both platforms; actual MCP host UI acceptance remains separate from the stdio protocol tests.
 
 ## Read an interactive terminal
 

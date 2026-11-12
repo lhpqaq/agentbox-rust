@@ -4,7 +4,7 @@ This is a separate implementation and separate state directory, not an in-place 
 
 | Area | Rust source implementation | Difference / remaining verification |
 |---|---|---|
-| Shell | Persistent Bash process attached to PTY | Linux only; all Rust execution still unverified |
+| Shell | Persistent Bash process attached to PTY | Linux/macOS runtime checks and CI; see VERIFICATION.md |
 | State | cd/export/functions shared between structured commands | Shell instrumentation can be modified by same-privilege commands |
 | Command control | Private FD with ID + parent PID checks | DONE fallback completes once; missing prompt prevents reuse |
 | Lifecycle | Detached broker + replaceable HTTP | Socket end-to-end tests not run |
