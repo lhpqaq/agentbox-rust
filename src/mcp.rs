@@ -274,7 +274,10 @@ fn tool_result(data: Value, is_error: bool, max_output: usize) -> Value {
 }
 pub fn wait(rpc: &RpcClient, args: &Value) -> crate::error::Result<Value> {
     observe(args, |method, params, timeout| {
-        rpc.call_timeout(method, params, timeout)
+        rpc.call_timeout(method, params, timeout).map_err(|mut e| {
+            e.message = e.message.replace(&rpc.token, "[redacted]");
+            e
+        })
     })
 }
 fn completed(record: &Value) -> bool {
@@ -318,6 +321,7 @@ fn observe(
         }
         let mut full = false;
         let mut drain_failed = false;
+        let mut observation_error = Value::Null;
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
             drain_failed = true
@@ -375,7 +379,10 @@ fn observe(
                         drain_failed = true
                     }
                 }
-                Err(_) => drain_failed = true,
+                Err(e) => {
+                    drain_failed = true;
+                    observation_error = json!({"code":e.code,"message":e.message});
+                }
             }
         }
         let timed_out = Instant::now() >= deadline;
@@ -419,6 +426,9 @@ fn observe(
                 Value::Null
             };
             let mut result = json!({"command":record,"session_id":args["session_id"],"command_id":args["command_id"],"output":output,"output_bytes":total,"output_truncated":total>output.len()||full||drain_failed,"after":cursor,"last_seq":cursor,"output_may_be_truncated":retention,"history_retained":retained,"output_retention_verified":verified});
+            if !observation_error.is_null() {
+                result["observation_error"] = observation_error;
+            }
             if !done || full || drain_failed {
                 result["error"] = json!(if drain_failed && !timed_out {
                     "observation_incomplete"
@@ -808,6 +818,19 @@ mod observation_tests {
     }
     fn record(status: &str, loss: bool) -> Value {
         json!({"id":"c","status":status,"output_may_be_truncated":loss,"history_retained":true})
+    }
+    #[test]
+    fn failed_output_read_preserves_cause_and_known_completion() {
+        let result = observe(&args(), |method, _, _| match method {
+            "command" => Ok(record("finished", false)),
+            "events" => Err(crate::error::AbError::new(502, "test disconnection")),
+            _ => panic!("unexpected mutation"),
+        })
+        .unwrap();
+        assert_eq!(result["error"], "observation_incomplete");
+        assert_eq!(result["observation_error"]["message"], "test disconnection");
+        assert_eq!(result["may_be_running"], false);
+        assert_eq!(result["command"]["status"], "finished");
     }
     #[test]
     fn rereads_retention_after_output_and_excludes_prompts() {

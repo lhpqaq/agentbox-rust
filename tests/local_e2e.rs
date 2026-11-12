@@ -313,3 +313,53 @@ fn http_restart_mcp_and_live_state() {
         200
     );
 }
+
+#[test]
+#[ignore = "requires explicit AGENTBOX_ALLOW_SOCKET_TESTS=1 on a permitted Linux or macOS machine"]
+fn rpc_drains_closed_peer_and_enforces_deadline() {
+    use std::os::unix::net::UnixListener;
+    assert_eq!(
+        std::env::var("AGENTBOX_ALLOW_SOCKET_TESTS").as_deref(),
+        Ok("1")
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let socket = UnixListener::bind(temp.path().join("broker.sock")).unwrap();
+    let payload = "x".repeat(32768);
+    let expected = payload.clone();
+    let server = std::thread::spawn(move || {
+        for _ in 0..24 {
+            let (mut stream, _) = socket.accept().unwrap();
+            let mut request = String::new();
+            BufReader::new(&stream).read_line(&mut request).unwrap();
+            writeln!(stream, "{}", json!({"ok":true,"result":payload})).unwrap();
+            // Drop immediately, leaving several client buffer-sized chunks unread.
+        }
+        let (mut stream, _) = socket.accept().unwrap();
+        let mut request = String::new();
+        BufReader::new(&stream).read_line(&mut request).unwrap();
+        stream.write_all(b"{\"ok\":true").unwrap();
+        drop(stream);
+        let (stream, _) = socket.accept().unwrap();
+        BufReader::new(&stream)
+            .read_line(&mut String::new())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(150));
+    });
+    let client = agentbox::rpc::RpcClient {
+        home: temp.path().to_owned(),
+        token: "test-token".into(),
+    };
+    for _ in 0..24 {
+        assert_eq!(client.call("status", json!({})).unwrap(), expected);
+    }
+    let incomplete = client.call("status", json!({})).unwrap_err();
+    assert_eq!(incomplete.code, 502);
+    assert!(incomplete.message.contains("disconnected"));
+    let start = Instant::now();
+    let timeout = client
+        .call_timeout("status", json!({}), Duration::from_millis(30))
+        .unwrap_err();
+    assert_eq!(timeout.code, 504);
+    assert!(start.elapsed() < Duration::from_secs(1));
+    server.join().unwrap();
+}

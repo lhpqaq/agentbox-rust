@@ -156,17 +156,21 @@ fn wait(client: &RpcClient, sid: &str, cid: &str, timeout: f64) -> Result<Value>
         "history_retained",
         "output_retention_verified",
         "error",
+        "observation_error",
         "may_be_running",
     ] {
         if let Some(v) = observed.get(key) {
             result[key] = v.clone();
         }
     }
-    result["timed_out"] = json!(observed["error"].is_string());
+    result["timed_out"] = json!(observed["error"] == "timeout");
     result["cursor"] = observed["after"].clone();
     Ok(result)
 }
 fn check_result(result: &Value) -> Result<()> {
+    if let Some(error) = result["error"].as_str() {
+        bail!("Observation {error}; inspect returned state and wait again using the same command ID. Do not resubmit automatically.");
+    }
     if result["status"] != "finished" || result["exit_code"].as_i64() != Some(0) {
         bail!(
             "Command ended with status {} and exit code {}; inspect returned output",
@@ -267,9 +271,6 @@ fn run() -> Result<()> {
                             timeout,
                         )?;
                         print(&result)?;
-                        if result["timed_out"] == true {
-                            bail!("Wait timed out; command may still be running. Wait again; do not resubmit automatically.");
-                        }
                         check_result(&result)?;
                     }
                 }
@@ -280,9 +281,6 @@ fn run() -> Result<()> {
                 } => {
                     let result = wait(&client, &session_id, &command_id, timeout)?;
                     print(&result)?;
-                    if result["timed_out"] == true {
-                        bail!("Wait timed out; command may still be running");
-                    }
                     check_result(&result)?;
                 }
                 Commands::Input {

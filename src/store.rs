@@ -64,7 +64,8 @@ impl Store {
         CREATE TABLE IF NOT EXISTS requests(session_id TEXT NOT NULL,request_id TEXT NOT NULL,command_id TEXT NOT NULL,hash TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(session_id,request_id));
         CREATE INDEX IF NOT EXISTS requests_command ON requests(command_id);
         CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL,created_at REAL NOT NULL,bytes INTEGER NOT NULL);
-        CREATE INDEX IF NOT EXISTS events_session ON events(session_id,seq);")?;
+        CREATE INDEX IF NOT EXISTS events_session ON events(session_id,seq);
+        CREATE INDEX IF NOT EXISTS events_retention ON events(session_id,seq,bytes);")?;
         Ok(Self {
             db,
             event_limit: 20000,

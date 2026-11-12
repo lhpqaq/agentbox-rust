@@ -6,7 +6,10 @@ use crate::{
 use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, Write},
-    os::unix::{net::UnixStream, process::CommandExt},
+    os::{
+        fd::AsRawFd,
+        unix::{net::UnixStream, process::CommandExt},
+    },
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
@@ -35,22 +38,62 @@ impl RpcClient {
             UnixStream::connect(self.home.join("broker.sock")).map_err(|e| connect_error(&e))?;
         let deadline = Instant::now() + timeout;
         let result = (|| -> Result<Value> {
-            stream.set_write_timeout(Some(timeout))?;
+            stream
+                .set_write_timeout(Some(timeout))
+                .map_err(|e| AbError::new(500, format!("Setting broker write timeout: {e}")))?;
             let mut bytes =
                 serde_json::to_vec(&json!({"token":self.token,"method":method,"params":params}))?;
             bytes.push(b'\n');
             if bytes.len() > 400 * 1024 {
                 return Err(AbError::new(413, "Broker request too large"));
             }
-            stream.write_all(&bytes)?;
+            stream
+                .write_all(&bytes)
+                .map_err(|e| AbError::new(500, format!("Sending broker request: {e}")))?;
+            // Poll a nonblocking socket against one absolute deadline. On Darwin,
+            // changing SO_RCVTIMEO after the peer closes can fail with EINVAL even
+            // while a complete response remains buffered in the socket.
+            stream.set_nonblocking(true)?;
             let mut reader = BufReader::new(stream);
             let mut data = Vec::new();
             loop {
                 let left = deadline
                     .checked_duration_since(Instant::now())
                     .ok_or_else(|| AbError::new(504, "Broker request timed out"))?;
-                reader.get_ref().set_read_timeout(Some(left))?;
-                let chunk = reader.fill_buf()?;
+                let mut ready = libc::pollfd {
+                    fd: reader.get_ref().as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                let millis = left.as_millis().saturating_add(1).min(i32::MAX as u128) as i32;
+                let polled = unsafe { libc::poll(&mut ready, 1, millis) };
+                if polled == 0 {
+                    continue;
+                }
+                if polled < 0 {
+                    let error = std::io::Error::last_os_error();
+                    if error.kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    return Err(AbError::new(
+                        500,
+                        format!("Polling broker response: {error}"),
+                    ));
+                }
+                let chunk = match reader.fill_buf() {
+                    Ok(chunk) => chunk,
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                        ) =>
+                    {
+                        continue
+                    }
+                    Err(e) => {
+                        return Err(AbError::new(500, format!("Reading broker response: {e}")))
+                    }
+                };
                 if chunk.is_empty() {
                     return Err(AbError::new(502, "Broker disconnected before response"));
                 }

@@ -59,3 +59,15 @@
 真实使用发现，在结构化 run 的 source 脚本中执行 `set -o emacs` 会使系统 Bash 3.2 后续不再显示提示符，虽然命令仍能执行。已在独立 PTY 中复现；将新建共享 Shell 的 readline 初始化改为顶层 input，避免 source 路径。已有受影响会话可在顶层执行 `set +o emacs; set -o emacs` 恢复，保留原 Shell 状态。
 
 原生 attach 回归测试新增“每一条连续命令后必须出现新提示符”的断言；该断言在旧二进制上复现失败，在修复后通过。之前的仅输出匹配不能证明交互提示符正常。
+
+## 2026-11-12：共享会话读取与大输出修复
+
+- `attach SESSION --read-only` 只旁观，不转发输入或修改共享窗口尺寸。
+- 会话参数支持完整 ID、唯一名称或至少六字符的唯一 ID 前缀；歧义直接报错，关闭的会话仍参与歧义检查。
+- `read SESSION --after CURSOR --max-bytes N` 返回有大小上限的 JSON 终端记录，支持续读及保留历史缺失提示。它不会执行命令，不是终端屏幕重建器。
+- `stop --shutdown-sessions --broker-only` 不再尝试关闭 HTTP。
+- 修复 macOS 上服务端关闭 Unix socket 后，设置 SO_RCVTIMEO 返回 EINVAL、但接收缓冲区仍有完整响应的竞态。客户端改用非阻塞读取和绝对截止时间 poll；不重发请求。
+- 等待响应区分 `timeout` 与 `observation_incomplete`，后者保留 `observation_error`；已知命令完成状态不会丢失。
+- 为事件保留统计增加覆盖索引，避免重复读取包含大段输出的数据库页。
+
+`python3 scripts/test-bulk-output.py` 在独立 broker 中验证 9 MiB 输出、1 MiB 客户端尾部上限、8 MiB 服务端保留上限和 read 的缺失提示。本机 debug 构建一次实测约 14 秒，不代表其他机器或 release 性能。新增 socket 测试覆盖发完响应立即关闭、响应不完整和截止时间；全部为临时状态目录，不操作用户现有会话。
