@@ -43,7 +43,7 @@ def main():
 
         try:
             # The daemon deliberately gets different, stale values.
-            data('start', env={'CALLER_VALUE': 'stale', 'BROKER_ONLY': 'must-not-leak'})
+            data('start', env={'CALLER_VALUE': 'stale', 'BROKER_ONLY': 'must-not-leak', 'TERM': 'vt100'})
             for kind in ['bash', 'zsh']:
                 shell = shutil.which(kind)
                 if not shell:
@@ -140,6 +140,16 @@ plugin_function() { printf 'PLUGIN_FUNCTION:%s\\n' "$PLUGIN_LOADED"; }
                     time.sleep(.03)
                 data('close',sid)
             print('PASS: foreground interrupts preserve native shells and clean mode skips user startup files',flush=True)
+            broker_sid=cli('create','broker-environment','--shell',shutil.which('bash'),'--no-rc','--broker-env').stdout.strip()
+            data('input',broker_sid,'printf "BROKER_ENV:%s:%s\\n" "$TERM" "$CALLER_VALUE"','--newline')
+            deadline=time.monotonic()+5
+            while True:
+                page=data('read',broker_sid)
+                if 'BROKER_ENV:vt100:stale' in page['output']: break
+                assert time.monotonic()<deadline,page['output']
+                time.sleep(.03)
+            data('close',broker_sid)
+            print('PASS: explicit broker environment preserves its TERM and values instead of silently overriding them',flush=True)
             # No environment values should be placed in durable session metadata.
             assert 'fresh from caller' not in json.dumps(data('sessions'))
             print('PASS: environment values are absent from session metadata', flush=True)

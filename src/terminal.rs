@@ -320,13 +320,11 @@ PROMPT_COMMAND=__ab_prompt
                 .stderr(Stdio::from(slave))
                 .env("AGENTBOX_SESSION", &spec.id);
             // Preserve the creating terminal's capabilities when supplied.
-            if spec
-                .launch
-                .environment
-                .as_ref()
-                .and_then(|e| e.get("TERM"))
-                .is_none()
-            {
+            let has_term = match &spec.launch.environment {
+                Some(environment) => environment.contains_key("TERM"),
+                None => std::env::var_os("TERM").is_some(),
+            };
+            if !has_term {
                 cmd.env("TERM", "xterm-256color");
             }
             unsafe {
