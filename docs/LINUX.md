@@ -4,7 +4,7 @@ Verified on 2026-11-09 with Ubuntu 22.04.5 LTS x86_64, kernel
 5.15.0-125-generic, Rust/Cargo 1.99.1, GCC 11.4 and Node 22.22.0.
 
 Requirements: Rust with rustfmt/clippy, a C compiler (SQLite is bundled),
-Bash, stty, Python 3 for CLI scenarios, and Node for frontend tests.
+Bash, Zsh for native-shell/state tests, stty, Python 3 for CLI scenarios, and Node for frontend tests.
 Use a host permitting local Unix/TCP sockets and PTYs.
 
 ## Checks

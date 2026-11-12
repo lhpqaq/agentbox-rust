@@ -39,6 +39,7 @@ cargo build --locked
 python3 scripts/test-macos-cli.py
 python3 scripts/test-attach.py
 python3 scripts/test-shell.py
+python3 scripts/test-native-concurrency.py
 python3 scripts/test-shell-state.py
 AGENTBOX_TEST_LOCALE=C python3 scripts/test-shell-state.py
 python3 scripts/test-bulk-output.py
@@ -95,3 +96,10 @@ concurrent clients. The bulk fixture observed its complete 9 MiB with a bounded
 returned tail in 8.10 seconds in this run; this is a single local measurement.
 The C-locale state fixture seeds known UTF-8 bytes with ASCII escapes so it tests
 serialization separately from ZLE's locale-dependent keyboard decoding.
+
+
+Native concurrency validation starts 16 Zsh sessions simultaneously with different
+client variables while every startup file waits for input. Creation and listing
+remain responsive; each answer/import stays in its own session and all private
+import directories are removed afterward. The fixture passed against local debug
+and optimized binaries and is included in both CI runtime phases.

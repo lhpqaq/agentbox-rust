@@ -138,11 +138,11 @@ Deliberately daemonized processes can escape the session on both platforms.
 
 ## Features and validation
 
-- Persistent Bash/PTY sessions with independent working directories, variables and functions.
+- Native Bash/Zsh with normal startup configuration and plugins; managed Bash for structured commands.
+- Optional Zsh state handoff for selected variables, functions, aliases and environment values; reconnect preserves the live process.
 - Detached broker, SQLite command history, bounded output replay and request ID deduplication.
 - CLI and stdio MCP interfaces; an optional embedded web UI.
-- On macOS arm64: 50 Rust tests and seven pure CLI scenarios passed, along with fmt, clippy and six frontend test files. A live socket/MCP integration test also passed.
-- On Ubuntu 22.04 x86_64: 50 Rust tests, seven CLI scenarios, the live HTTP/MCP integration test, fmt, clippy and six frontend test files passed. See [Linux verification](docs/LINUX.md). Browser UI acceptance testing is incomplete.
+- [Verification records](docs/VERIFICATION.md) cover local macOS, Linux/macOS CI, real Zsh plugins, state import, HTTP/MCP, concurrent clients and release artifacts. Browser UI acceptance testing remains incomplete.
 - Nonempty raw input permanently disables later structured `run` in that session; create a new session to resume structured execution.
 
 ## Documentation

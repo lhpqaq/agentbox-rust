@@ -60,6 +60,7 @@ jobs:
         run: python3 scripts/test-shell-state.py
         env:
           AGENTBOX_TEST_LOCALE: C
+      - run: python3 scripts/test-native-concurrency.py
       - run: python3 scripts/test-shell.py
       - run: python3 scripts/test-attach.py
       - run: python3 scripts/test-bulk-output.py
@@ -73,6 +74,7 @@ jobs:
           python3 scripts/test-macos-cli.py
           python3 scripts/test-zsh-plugins.py
           python3 scripts/test-shell-state.py
+          python3 scripts/test-native-concurrency.py
           python3 scripts/test-shell.py
           python3 scripts/test-attach.py
           python3 scripts/test-bulk-output.py

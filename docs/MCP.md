@@ -7,7 +7,7 @@ Initialize with protocolVersion, capabilities, and clientInfo name/version, then
 Nine tools are exposed:
 
 - agentbox_sessions: paginated sessions, newest first.
-- agentbox_create: create persistent Bash/PTY session.
+- agentbox_create: create managed Bash for run/wait, or native Bash/Zsh for input/read.
 - agentbox_run: submit once, optionally with a session-scoped request_id.
 - agentbox_wait: observe an existing command by session_id and command_id.
 - agentbox_input: send raw keystrokes, without adding newline.
