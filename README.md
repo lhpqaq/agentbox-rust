@@ -65,6 +65,9 @@ Native PTY checks: `python3 scripts/test-attach.py` (requires local Unix sockets
 
 ## Use your Zsh/Bash environment
 
+See [terminal environment and Zsh state reuse](docs/SHELLS.md) for Chinese setup,
+`agentbox-here`, startup semantics and state boundaries.
+
 ```sh
 agentbox attach --shell /bin/zsh --home "$AB_HOME"
 agentbox attach --shell /bin/zsh --login --home "$AB_HOME"

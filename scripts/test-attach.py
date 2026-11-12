@@ -20,7 +20,7 @@ BIN = pathlib.Path(os.environ.get('AGENTBOX_TEST_BIN', ROOT / 'target/debug/agen
 
 
 class Attached:
-    def __init__(self, home, session=None, read_only=False, options=None, env=None):
+    def __init__(self, home, session=None, read_only=False, options=None, env=None, argv=None):
         self.master, self.slave = pty.openpty()
         self.original = termios.tcgetattr(self.slave)
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
@@ -31,7 +31,7 @@ class Attached:
             args += options if options is not None else ["--managed"]
         if read_only:
             args += ["--read-only"]
-        self.process = subprocess.Popen(args, stdin=self.slave, stdout=self.slave,
+        self.process = subprocess.Popen(argv or args, stdin=self.slave, stdout=self.slave,
                                         stderr=self.slave, env={**os.environ, 'TERM': 'xterm-256color', **(env or {})})
         self.output = b''
 

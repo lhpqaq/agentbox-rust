@@ -44,6 +44,15 @@ impl Core {
         for entry in fs::read_dir(home.join("runtime"))? {
             let entry = entry?;
             let path = entry.path();
+            if entry.file_type()?.is_dir()
+                && entry.file_name().to_str().is_some_and(|n| {
+                    n.strip_prefix(".zsh-state-").is_some_and(|id| {
+                        id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())
+                    })
+                })
+            {
+                fs::remove_dir_all(&path)?;
+            }
             if matches!(
                 path.extension().and_then(|x| x.to_str()),
                 Some("sh" | "bashrc")
@@ -84,7 +93,7 @@ impl Core {
         match method {
             "status" => {
                 return Ok(
-                    json!({"version":VERSION,"capabilities":["native_shell_v1","client_environment_v1"],"broker_pid":std::process::id(),"uptime":self.started.elapsed().as_secs_f64(),"session_count":self.terminals.values().filter(|t|!t.is_closed()).count(),"persistence":"Live sessions survive HTTP restart, not broker or machine restart","journal_healthy":!self.fatal.load(Ordering::SeqCst)}),
+                    json!({"version":VERSION,"capabilities":["native_shell_v1","client_environment_v1","zsh_state_v1"],"broker_pid":std::process::id(),"uptime":self.started.elapsed().as_secs_f64(),"session_count":self.terminals.values().filter(|t|!t.is_closed()).count(),"persistence":"Live sessions survive HTTP restart, not broker or machine restart","journal_healthy":!self.fatal.load(Ordering::SeqCst)}),
                 )
             }
             "sessions" => return Ok(json!(self.db()?.sessions()?)),
@@ -263,6 +272,7 @@ impl Core {
                 eprintln!("Journal failure: {e}; broker will stop sessions");
             }
         });
+        let importing = launch.zsh_state.is_some();
         match Terminal::spawn(
             TerminalSpec {
                 home: self.home.clone(),
@@ -277,6 +287,7 @@ impl Core {
             Ok(t) => {
                 let mut s = self.db()?.session(&id)?;
                 s["pid"] = json!(t.pid());
+                s["shell"]["state_imported"] = json!(importing);
                 self.db()?.update_session(s, "session_updated")?;
                 self.terminals.insert(id.clone(), t);
                 self.db()?.session(&id)

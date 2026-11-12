@@ -19,3 +19,5 @@ pub mod transcript;
 pub mod doctor;
 
 pub mod shell;
+
+mod shell_state;

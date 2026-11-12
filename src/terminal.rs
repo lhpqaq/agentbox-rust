@@ -261,6 +261,7 @@ PROMPT_COMMAND=__ab_prompt
         if !spec.launch.native() {
             private_file(&rc, script.as_bytes())?;
         }
+        let state_directory = crate::shell_state::prepare(&runtime, &spec.launch)?;
         let result = (|| -> Result<Self> {
             let mut fds = [0; 2];
             if unsafe { crate::platform::pipe_cloexec(fds.as_mut_ptr()) } < 0 {
@@ -299,7 +300,11 @@ PROMPT_COMMAND=__ab_prompt
             nonblock(control.as_raw_fd())?;
             let write_fd = write.as_raw_fd();
             let native = spec.launch.native();
+            let importing = state_directory.is_some();
             let mut cmd = spec.launch.command(&rc);
+            if let Some(directory) = &state_directory {
+                cmd.env("ZDOTDIR", directory);
+            }
             cmd.current_dir(&spec.cwd)
                 .stdin(Stdio::from(slave.try_clone()?))
                 .stdout(Stdio::from(slave.try_clone()?))
@@ -320,7 +325,7 @@ PROMPT_COMMAND=__ab_prompt
                     if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
                         return Err(io::Error::last_os_error());
                     }
-                    if native {
+                    if native && !importing {
                         return Ok(());
                     }
                     if write_fd != CONTROL_FD && libc::dup2(write_fd, CONTROL_FD) < 0 {
@@ -343,7 +348,7 @@ PROMPT_COMMAND=__ab_prompt
                 master,
                 control,
                 child,
-                rc: rc.clone(),
+                rc: state_directory.clone().unwrap_or_else(|| rc.clone()),
                 runtime,
                 sink,
                 idle,
@@ -351,7 +356,7 @@ PROMPT_COMMAND=__ab_prompt
                 cwd: spec.cwd.to_string_lossy().into(),
                 active: None,
                 tainted: native,
-                initialized: native,
+                initialized: native && !importing,
                 control_bytes: Vec::new(),
                 pending: VecDeque::new(),
                 decoder: Decoder::default(),
@@ -361,6 +366,9 @@ PROMPT_COMMAND=__ab_prompt
         })();
         if result.is_err() {
             let _ = fs::remove_file(rc);
+            if let Some(directory) = state_directory {
+                let _ = fs::remove_dir_all(directory);
+            }
         }
         result
     }
@@ -686,6 +694,13 @@ PROMPT_COMMAND=__ab_prompt
             self.read_output(false);
             self.cwd = String::from_utf8_lossy(fields[3]).into_owned();
             match fields[0] {
+                b"I" if self.tainted && !self.initialized && id.is_empty() && status == 0 => {
+                    self.initialized = true;
+                    self.emit(TerminalEvent::State {
+                        status: "interactive".into(),
+                        cwd: Some(self.cwd.clone()),
+                    });
+                }
                 b"S" => {
                     if let Some(a) = &mut self.active {
                         if a.id == id && !a.begun {
@@ -854,7 +869,12 @@ PROMPT_COMMAND=__ab_prompt
             ));
         }
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.read_output(true)));
-        if let Err(e) = fs::remove_file(&self.rc) {
+        let remove_rc = if self.rc.is_dir() {
+            fs::remove_dir_all(&self.rc)
+        } else {
+            fs::remove_file(&self.rc)
+        };
+        if let Err(e) = remove_rc {
             if e.kind() != io::ErrorKind::NotFound {
                 failures.push(format!("Remove shell startup file: {e}"));
             }

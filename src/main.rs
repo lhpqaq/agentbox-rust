@@ -39,6 +39,11 @@ enum Commands {
     Token,
     /// Diagnose local configuration and broker connectivity without changing state.
     Doctor,
+    /// Print optional shell integration; evaluate it in your current Zsh.
+    ShellInit {
+        #[arg(value_parser = ["zsh"])]
+        shell: String,
+    },
     Status,
     /// List persistent sessions; JSON by default.
     Sessions {
@@ -248,6 +253,7 @@ fn run() -> Result<()> {
             read_only,
             shell_options,
         } => attach::run(home, session_id, cwd, no_replay, read_only, shell_options)?,
+        Commands::ShellInit { shell: _ } => print!("{}", include_str!("../shell/integration.zsh")),
         Commands::Doctor => {
             let report = agentbox::doctor::report(&home);
             print(&report)?;

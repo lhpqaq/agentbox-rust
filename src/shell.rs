@@ -14,6 +14,7 @@ pub struct Launch {
     pub shell: Option<PathBuf>,
     pub login: bool,
     pub no_rc: bool,
+    pub zsh_state: Option<String>,
     pub environment: Option<BTreeMap<String, String>>,
 }
 impl Launch {
@@ -95,7 +96,28 @@ impl Launch {
         if shell.is_none() && (login || no_rc) {
             return Err(AbError::new(422, "login and no_rc require a native shell"));
         }
+        let zsh_state = match p.get("zsh_state") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(state)) if state.len() <= 128 * 1024 && !state.contains('\0') => {
+                Some(state.clone())
+            }
+            _ => {
+                return Err(AbError::new(
+                    422,
+                    "zsh_state must be UTF-8 shell source without NUL, at most 128 KiB",
+                ))
+            }
+        };
+        if zsh_state.is_some()
+            && (shell.as_ref().and_then(|p| p.file_name()) != Some(OsStr::new("zsh")) || no_rc)
+        {
+            return Err(AbError::new(
+                422,
+                "State import requires native Zsh with startup files enabled",
+            ));
+        }
         Ok(Self {
+            zsh_state,
             shell,
             login,
             no_rc,
@@ -104,7 +126,7 @@ impl Launch {
     }
     pub fn metadata(&self) -> Value {
         json!({"mode":if self.native(){"native"}else{"managed"},"executable":self.shell,
-            "login":self.login,"startup_files":self.native() && !self.no_rc,
+            "state_imported":false,"state_import_requested":self.zsh_state.is_some(),"login":self.login,"startup_files":self.native() && !self.no_rc,
             "environment_source":if self.environment.is_some(){"client_snapshot"}else{"broker"},
             "structured_commands":!self.native(),"cwd_tracking":if self.native(){"initial_directory_only"}else{"managed_prompt"}})
     }

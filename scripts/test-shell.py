@@ -77,7 +77,7 @@ plugin_function() { printf 'PLUGIN_FUNCTION:%s\\n' "$PLUGIN_LOADED"; }
 ''')
                     ready = b'BASH_FIXTURE>'
                 env = {'HOME': str(user), 'ZDOTDIR': str(user), 'SHELL': shell,
-                       'CALLER_VALUE': 'fresh from caller', 'TERM': 'xterm-256color'}
+                       'CALLER_VALUE': 'fresh from caller', 'TERM': 'xterm-256color', 'skip_global_compinit': '1'}
                 one = Attached(home, options=['--cwd', str(work), '--env', 'OVERRIDE=space 中文 = value'], env=env)
                 clients.append(one)
                 one.until(ready)

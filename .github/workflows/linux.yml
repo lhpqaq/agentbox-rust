@@ -29,6 +29,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y zsh
       - run: cargo build --locked
       - run: python3 scripts/test-macos-cli.py
+      - run: python3 scripts/test-shell-state.py
       - run: python3 scripts/test-shell.py
       - run: python3 scripts/test-attach.py
       - run: python3 scripts/test-bulk-output.py
@@ -40,6 +41,7 @@ jobs:
       - name: Verify release binary
         run: |
           python3 scripts/test-macos-cli.py
+          python3 scripts/test-shell-state.py
           python3 scripts/test-shell.py
           python3 scripts/test-attach.py
           python3 scripts/test-bulk-output.py

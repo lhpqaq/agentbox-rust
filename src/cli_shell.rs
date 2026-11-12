@@ -27,6 +27,12 @@ pub struct ShellOptions {
     /// Override an exported variable; repeatable. Values are not journaled.
     #[arg(long, value_name = "NAME=VALUE")]
     pub env: Vec<String>,
+    /// Import trusted Zsh source from an owned private file (normally shell-init).
+    #[arg(long, conflicts_with_all = ["managed", "no_rc"])]
+    pub state_file: Option<std::path::PathBuf>,
+    /// Remove the private import file after reading it (used by shell integration).
+    #[arg(long, hide = true, requires = "state_file")]
+    pub consume_state_file: bool,
 }
 impl ShellOptions {
     pub fn specified(&self) -> bool {
@@ -35,6 +41,8 @@ impl ShellOptions {
             || self.login
             || self.no_rc
             || self.inherit_env
+            || self.consume_state_file
+            || self.state_file.is_some()
             || self.broker_env
             || !self.env.is_empty()
     }
@@ -78,6 +86,21 @@ impl ShellOptions {
             request["login"] = json!(self.login);
             request["no_rc"] = json!(self.no_rc);
         }
+        if let Some(path) = &self.state_file {
+            use std::io::Read;
+            let mut state = String::new();
+            agentbox::config::private_file(path, false)?
+                .take(128 * 1024 + 1)
+                .read_to_string(&mut state)
+                .context("Read private UTF-8 Zsh state file")?;
+            if state.len() > 128 * 1024 {
+                bail!("Zsh state exceeds 128 KiB");
+            }
+            if self.consume_state_file {
+                std::fs::remove_file(path).context("Remove consumed private state file")?;
+            }
+            request["zsh_state"] = json!(state);
+        }
         shell::Launch::parse(request, cwd)?;
         Ok(())
     }
@@ -91,6 +114,7 @@ pub fn check_capabilities(client: &RpcClient, request: &Value) -> Result<()> {
     for (field, capability) in [
         ("shell", "native_shell_v1"),
         ("environment", "client_environment_v1"),
+        ("zsh_state", "zsh_state_v1"),
     ] {
         if request.get(field).is_some()
             && !status["capabilities"]
