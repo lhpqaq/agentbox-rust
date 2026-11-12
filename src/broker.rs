@@ -84,7 +84,7 @@ impl Core {
         match method {
             "status" => {
                 return Ok(
-                    json!({"version":VERSION,"broker_pid":std::process::id(),"uptime":self.started.elapsed().as_secs_f64(),"session_count":self.terminals.values().filter(|t|!t.is_closed()).count(),"persistence":"Live sessions survive HTTP restart, not broker or machine restart","journal_healthy":!self.fatal.load(Ordering::SeqCst)}),
+                    json!({"version":VERSION,"capabilities":["native_shell_v1","client_environment_v1"],"broker_pid":std::process::id(),"uptime":self.started.elapsed().as_secs_f64(),"session_count":self.terminals.values().filter(|t|!t.is_closed()).count(),"persistence":"Live sessions survive HTTP restart, not broker or machine restart","journal_healthy":!self.fatal.load(Ordering::SeqCst)}),
                 )
             }
             "sessions" => return Ok(json!(self.db()?.sessions()?)),
@@ -201,9 +201,10 @@ impl Core {
         if !cwd.is_dir() {
             return Err(AbError::new(422, "Working directory is not a directory"));
         }
+        let launch = crate::shell::Launch::parse(&p, &cwd)?;
         let id = uuid::Uuid::new_v4().simple().to_string();
         let now = config::now();
-        let s = json!({"id":id,"name":name,"cwd":cwd.to_string_lossy(),"status":"starting","pid":null,"created_at":now,"updated_at":now,"exit_code":null,"rows":rows,"cols":cols,"command_count":0});
+        let s = json!({"id":id,"name":name,"cwd":cwd.to_string_lossy(),"status":"starting","pid":null,"created_at":now,"updated_at":now,"exit_code":null,"rows":rows,"cols":cols,"command_count":0,"shell":launch.metadata()});
         self.db()?.update_session(s, "session_created")?;
         let store = self.store.clone();
         let fatal = self.fatal.clone();
@@ -269,6 +270,7 @@ impl Core {
                 cwd,
                 rows,
                 cols,
+                launch,
             },
             sink,
         ) {

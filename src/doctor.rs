@@ -89,9 +89,14 @@ pub fn report(home: &Path) -> Value {
             );
         }
     }
+    let native_name = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/bash".into());
+    let native_resolved = resolve_shell(&native_name, std::env::var_os("PATH").as_deref());
+    let native_supported = native_resolved
+        .as_ref()
+        .is_some_and(|p| matches!(p.file_name().and_then(|s| s.to_str()), Some("bash" | "zsh")));
     let ready = checks.iter().all(|c| c["ok"] == true);
     json!({"ready":ready,"client_version":VERSION,"platform":std::env::consts::OS,"architecture":std::env::consts::ARCH,
-        "home":home.to_string_lossy(),"shell":{"configured":configured_shell.to_string_lossy(),"resolved":resolved_shell.map(|p|p.to_string_lossy().into_owned()),"environment":"current client environment; an already-running broker may have inherited different settings"},"checks":checks,"broker":broker,"next_steps":steps,
+        "home":home.to_string_lossy(),"shell":{"configured":configured_shell.to_string_lossy(),"resolved":resolved_shell.map(|p|p.to_string_lossy().into_owned()),"environment":"current client environment; an already-running broker may have inherited different settings"},"native_shell":{"configured":native_name.to_string_lossy(),"resolved":native_resolved,"supported":native_supported,"environment":"new native CLI sessions use the creating client environment by default"},"checks":checks,"broker":broker,"next_steps":steps,
         "note":"This diagnosis is read-only. It does not test shell execution or validate an SSH connection."})
 }
 fn resolve_shell(command: &OsStr, path: Option<&OsStr>) -> Option<PathBuf> {

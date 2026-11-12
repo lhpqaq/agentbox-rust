@@ -32,3 +32,14 @@ The path/body/event contract follows the Python version. Host validation is tigh
 This backend supports Linux and macOS. Platform-specific PTY/process identity and filesystem helpers are tested on both through CI. Other operating systems are not supported. See VERIFICATION.md for test commands and coverage limits.
 
 The 256-KiB command and 64-KiB input limits apply to decoded UTF-8 text; the entire serialized HTTP body must also fit 300 KiB. JSON escaping and metadata count toward the body limit. A string below its decoded limit can therefore still be rejected as too large. The broker RPC envelope has a separate 400-KiB limit.
+
+
+### Native shell creation
+
+`POST /api/sessions` also accepts `shell` (Bash/Zsh executable), `login` and
+`no_rc` (booleans), and `environment` (complete string-to-string environment
+snapshot, maximum 128 KiB / 2048 entries). Without `environment`, the daemon's
+inherited environment is used. Values are transient, not journaled. Returned
+`shell` metadata reports mode, executable, startup policy, environment source,
+structured command support and whether cwd is tracked. Native sessions start as
+`interactive`, use input/read, and reject structured run. They are not sandboxes.

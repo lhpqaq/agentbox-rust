@@ -17,3 +17,5 @@ pub mod selection;
 pub mod transcript;
 
 pub mod doctor;
+
+pub mod shell;

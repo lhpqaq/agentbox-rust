@@ -1,4 +1,5 @@
 mod attach;
+mod cli_shell;
 
 use agentbox::{
     config,
@@ -59,6 +60,8 @@ enum Commands {
         /// Observe an existing session without sending input or resizing its PTY.
         #[arg(long, requires = "session_id")]
         read_only: bool,
+        #[command(flatten)]
+        shell_options: cli_shell::ShellOptions,
     },
     Create {
         #[arg(default_value = "terminal")]
@@ -69,6 +72,8 @@ enum Commands {
         rows: u16,
         #[arg(long, default_value_t = 100)]
         cols: u16,
+        #[command(flatten)]
+        shell_options: cli_shell::ShellOptions,
     },
     Run {
         session_id: String,
@@ -241,7 +246,8 @@ fn run() -> Result<()> {
             cwd,
             no_replay,
             read_only,
-        } => attach::run(home, session_id, cwd, no_replay, read_only)?,
+            shell_options,
+        } => attach::run(home, session_id, cwd, no_replay, read_only, shell_options)?,
         Commands::Doctor => {
             let report = agentbox::doctor::report(&home);
             print(&report)?;
@@ -295,11 +301,13 @@ fn run() -> Result<()> {
                     cwd,
                     rows,
                     cols,
+                    shell_options,
                 } => {
-                    let c = client.call(
-                        "create",
-                        json!({"name":name,"cwd":cwd,"rows":rows,"cols":cols}),
-                    )?;
+                    let cwd = cwd.unwrap_or(std::env::current_dir()?);
+                    let mut request = json!({"name":name,"cwd":cwd,"rows":rows,"cols":cols});
+                    shell_options.apply(&mut request, false, &cwd)?;
+                    cli_shell::check_capabilities(&client, &request)?;
+                    let c = client.call("create", request)?;
                     println!("{}", c["id"].as_str().context("Missing session ID")?);
                 }
                 Commands::Run {

@@ -45,3 +45,10 @@ possible server retention loss; sequence gaps alone are not proof of loss.
 Metadata can be shortened with `metadata_truncated=true`, but output is preserved.
 If a response cannot fit, read returns an error with the original cursor instead
 of silently dropping text. Reads never create, resize, or send input to a shell.
+
+
+`agentbox_create` accepts optional `shell`, `login`, `no_rc`, and `environment`
+for native Bash/Zsh sessions. `environment` is a complete string map, not an
+overlay. Native shells load normal startup plugins and retain live state across
+client reconnects. Use `agentbox_input` and `agentbox_read`; structured run/wait
+requires the default managed Bash. No environment values are stored as metadata.

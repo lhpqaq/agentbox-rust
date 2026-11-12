@@ -12,7 +12,7 @@ use std::{
         unix::{fs::OpenOptionsExt, process::CommandExt},
     },
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, SyncSender},
@@ -29,6 +29,7 @@ pub struct TerminalSpec {
     pub cwd: PathBuf,
     pub rows: u16,
     pub cols: u16,
+    pub launch: crate::shell::Launch,
 }
 #[derive(Debug, Clone)]
 pub enum TerminalEvent {
@@ -102,7 +103,7 @@ impl Terminal {
             }
             Err(_) => {
                 let _ = terminal.close();
-                bail!("Bash did not become ready within 8 seconds")
+                bail!("Shell did not become ready within 8 seconds")
             }
         }
     }
@@ -257,7 +258,9 @@ __ab_prompt() {{
 PROMPT_COMMAND=__ab_prompt
 "#
         );
-        private_file(&rc, script.as_bytes())?;
+        if !spec.launch.native() {
+            private_file(&rc, script.as_bytes())?;
+        }
         let result = (|| -> Result<Self> {
             let mut fds = [0; 2];
             if unsafe { crate::platform::pipe_cloexec(fds.as_mut_ptr()) } < 0 {
@@ -295,34 +298,30 @@ PROMPT_COMMAND=__ab_prompt
             nonblock(master.as_raw_fd())?;
             nonblock(control.as_raw_fd())?;
             let write_fd = write.as_raw_fd();
-            let mut cmd =
-                Command::new(std::env::var_os("AGENTBOX_BASH").unwrap_or_else(|| "bash".into()));
-            cmd.args(["--noprofile", "--rcfile"])
-                .arg(&rc)
-                .arg("-i")
-                .current_dir(&spec.cwd)
+            let native = spec.launch.native();
+            let mut cmd = spec.launch.command(&rc);
+            cmd.current_dir(&spec.cwd)
                 .stdin(Stdio::from(slave.try_clone()?))
                 .stdout(Stdio::from(slave.try_clone()?))
                 .stderr(Stdio::from(slave))
-                .env("TERM", "xterm-256color")
-                .env("COLORTERM", "truecolor")
                 .env("AGENTBOX_SESSION", &spec.id);
-            for key in [
-                "AGENTBOX_TOKEN",
-                "BASH_ENV",
-                "ENV",
-                "PS1",
-                "PS2",
-                "PROMPT_COMMAND",
-                "SHELLOPTS",
-                "BASHOPTS",
-            ] {
-                cmd.env_remove(key);
+            // Preserve the creating terminal's capabilities when supplied.
+            if spec
+                .launch
+                .environment
+                .as_ref()
+                .and_then(|e| e.get("TERM"))
+                .is_none()
+            {
+                cmd.env("TERM", "xterm-256color");
             }
             unsafe {
                 cmd.pre_exec(move || {
                     if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
                         return Err(io::Error::last_os_error());
+                    }
+                    if native {
+                        return Ok(());
                     }
                     if write_fd != CONTROL_FD && libc::dup2(write_fd, CONTROL_FD) < 0 {
                         return Err(io::Error::last_os_error());
@@ -333,7 +332,13 @@ PROMPT_COMMAND=__ab_prompt
                     Ok(())
                 });
             }
-            let child = cmd.spawn().context("start interactive Bash")?;
+            let child = cmd.spawn().context("start interactive shell")?;
+            if native {
+                sink(TerminalEvent::State {
+                    status: "interactive".into(),
+                    cwd: Some(spec.cwd.to_string_lossy().into_owned()),
+                });
+            }
             Ok(Self {
                 master,
                 control,
@@ -345,8 +350,8 @@ PROMPT_COMMAND=__ab_prompt
                 closed,
                 cwd: spec.cwd.to_string_lossy().into(),
                 active: None,
-                tainted: false,
-                initialized: false,
+                tainted: native,
+                initialized: native,
                 control_bytes: Vec::new(),
                 pending: VecDeque::new(),
                 decoder: Decoder::default(),
@@ -1203,6 +1208,7 @@ mod tests {
                 cwd: dir.path().into(),
                 rows: 24,
                 cols: 80,
+                launch: crate::shell::Launch::default(),
             },
             Arc::new(move |e| {
                 let _ = tx.send(e);

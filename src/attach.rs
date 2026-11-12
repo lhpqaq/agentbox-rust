@@ -245,12 +245,13 @@ pub fn run(
     cwd: Option<PathBuf>,
     no_replay: bool,
     read_only: bool,
+    shell_options: crate::cli_shell::ShellOptions,
 ) -> Result<()> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         bail!("attach needs an interactive terminal on stdin and stdout");
     }
-    if session_id.is_some() && cwd.is_some() {
-        bail!("--cwd is only supported when creating a new session");
+    if session_id.is_some() && (cwd.is_some() || shell_options.specified()) {
+        bail!("--cwd and shell/environment options are only supported when creating a new session");
     }
     if read_only && session_id.is_none() {
         bail!("--read-only requires an existing session ID");
@@ -263,11 +264,12 @@ pub fn run(
         Some(id) => agentbox::selection::resolve(&client, &id)?,
         None => {
             let (rows, cols) = size().unwrap_or((30, 100));
-            let session = call(
-                &client,
-                "create",
-                json!({"name":"shared terminal","cwd":cwd.unwrap_or(std::env::current_dir()?),"rows":rows,"cols":cols}),
-            )?;
+            let cwd = cwd.unwrap_or(std::env::current_dir()?);
+            let mut request = json!({"name":"shared terminal","cwd":cwd,"rows":rows,"cols":cols});
+            shell_options.apply(&mut request, true, &cwd)?;
+            crate::cli_shell::check_capabilities(&client, &request)?;
+            let native = request.get("shell").is_some();
+            let session = call(&client, "create", request)?;
             let id = session["id"]
                 .as_str()
                 .context("Missing session ID")?
@@ -276,11 +278,13 @@ pub fn run(
             // Bash 3.2 loses subsequent prompts if readline is enabled inside
             // the sourced script used by structured run. Direct input also
             // correctly marks this session as interactive from the outset.
-            call(
-                &client,
-                "input",
-                json!({"session_id":id,"data":"set -o emacs\n","source":"user"}),
-            )?;
+            if !native {
+                call(
+                    &client,
+                    "input",
+                    json!({"session_id":id,"data":"set -o emacs\n","source":"user"}),
+                )?;
+            }
             id
         }
     };

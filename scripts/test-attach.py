@@ -20,17 +20,19 @@ BIN = pathlib.Path(os.environ.get('AGENTBOX_TEST_BIN', ROOT / 'target/debug/agen
 
 
 class Attached:
-    def __init__(self, home, session=None, read_only=False):
+    def __init__(self, home, session=None, read_only=False, options=None, env=None):
         self.master, self.slave = pty.openpty()
         self.original = termios.tcgetattr(self.slave)
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
         args = [str(BIN), '--home', str(home), 'attach']
         if session:
             args += [session, '--no-replay']
+        if not session:
+            args += options if options is not None else ["--managed"]
         if read_only:
             args += ["--read-only"]
         self.process = subprocess.Popen(args, stdin=self.slave, stdout=self.slave,
-                                        stderr=self.slave, env={**os.environ, 'TERM': 'xterm-256color'})
+                                        stderr=self.slave, env={**os.environ, 'TERM': 'xterm-256color', **(env or {})})
         self.output = b''
 
     def until(self, needle, timeout=10, start=0):

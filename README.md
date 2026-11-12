@@ -1,6 +1,6 @@
 # AgentBox Rust — Linux and macOS
 
-AgentBox keeps Bash terminals running in a local broker so a person and an agent
+AgentBox keeps Bash and Zsh terminals running in a local broker so a person and an agent
 can view and operate the same shell through a native terminal, CLI or MCP.
 This repository adapts `AgentBox-Rust-source-unverified.zip` for Linux and macOS.
 See [Linux verification](docs/LINUX.md) for the Linux checks and setup.
@@ -50,8 +50,9 @@ This is a client mode for avoiding accidental input, not a separate access permi
 `Ctrl-]` detaches without closing the shell. Reconnect with
 `agentbox attach SESSION_ID --home "$PWD/.macos-demo"`; type `exit` in the shell
 to close it. Attaching to an existing session does not inject setup commands.
-Omit the ID to create a shell with readline editing enabled. Existing shells
-retain their own editing mode. Window size follows the attached terminal.
+Omit the ID to create a native `$SHELL` (Bash or Zsh), loading normal startup
+files and copying the creating terminal’s exported environment. Existing shells
+retain their own editing mode and environment. Window size follows the attached terminal.
 
 This streams retained terminal output, not a saved screen image; use `--no-replay`
 for live output only. Terminal device queries, OSC/DCS and unknown CSI operations
@@ -61,6 +62,39 @@ broker's Unicode API; NUL is omitted and invalid UTF-8 is replaced. After raw
 input, agents should continue using `input` with `read`/`logs` rather than structured `run`.
 
 Native PTY checks: `python3 scripts/test-attach.py` (requires local Unix sockets).
+
+## Use your Zsh/Bash environment
+
+```sh
+agentbox attach --shell /bin/zsh --home "$AB_HOME"
+agentbox attach --shell /bin/zsh --login --home "$AB_HOME"
+agentbox attach --shell /bin/bash --no-rc --home "$AB_HOME"
+agentbox attach --env PROJECT_STAGE=dev --home "$AB_HOME"
+```
+
+Native sessions preserve normal prompts, editing modes, aliases, functions, Zsh
+completion/widgets and plugins loaded by startup files. `--login` requests login
+startup files; `--no-rc` skips user startup files (system Zsh `zshenv` still runs).
+The client environment is a complete snapshot: a stale broker cannot add old
+variables. `--broker-env` explicitly uses the daemon environment instead.
+`AGENTBOX_TOKEN` is never inherited. Environment values are not saved in session
+metadata, although commands/startup scripts can print them into terminal output.
+
+Detach/reattach keeps the **same shell process**, including unexported variables,
+functions, current directory and jobs. New sessions load startup files but cannot
+magically clone unexported state or running jobs from an unrelated parent shell.
+Native session metadata records the initial directory; it does not track later
+`cd` or a remote SSH working directory. Use `pwd` in the shared terminal when needed.
+
+`create` still defaults to managed Bash for reliable `run`/`wait` command IDs.
+`create --shell /bin/zsh` makes a native session without attaching; operate it with
+`input`/`read` or attach. `attach --managed` retains the previous clean Bash mode.
+Shell/environment flags only apply to creation, never to an existing session.
+New options require a capable broker: an old broker is rejected before creation,
+without restarting it. Use a separate `--home` while old sessions are active.
+
+Validation: `python3 scripts/test-shell.py` tests both Bash and Zsh using disposable
+startup files, plugins, a stale broker environment, and real terminal reconnects.
 
 ## Use the CLI on Linux or macOS
 

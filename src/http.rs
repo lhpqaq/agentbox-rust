@@ -122,7 +122,16 @@ pub(crate) fn valid_key(s: &str) -> bool {
 }
 fn validate(method: &str, v: &Value) -> bool {
     let keys: &[&str] = match method {
-        "create" => &["name", "cwd", "rows", "cols"],
+        "create" => &[
+            "name",
+            "cwd",
+            "rows",
+            "cols",
+            "shell",
+            "login",
+            "no_rc",
+            "environment",
+        ],
         "rename" => &["name"],
         "run" => &["command", "request_id"],
         "input" => &["data", "source", "event_seq"],
@@ -144,6 +153,14 @@ fn validate(method: &str, v: &Value) -> bool {
                     || str_field(v, "cwd", 1, 4096, false))
                 && int_field(v, "rows", 2, 300, false)
                 && int_field(v, "cols", 10, 500, false)
+                && str_field(v, "shell", 1, 4096, false)
+                && ["login", "no_rc"]
+                    .iter()
+                    .all(|k| v.get(k).is_none_or(Value::is_boolean))
+                && v.get("environment").is_none_or(|e| {
+                    e.as_object()
+                        .is_some_and(|o| o.len() <= 2048 && o.values().all(Value::is_string))
+                })
         }
         "rename" => str_field(v, "name", 1, 80, true),
         "run" => {

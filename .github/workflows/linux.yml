@@ -24,8 +24,12 @@ jobs:
         with:
           node-version: '22'
       - run: bash scripts/verify.sh
+      - name: Install Zsh for native-shell tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh
       - run: cargo build --locked
       - run: python3 scripts/test-macos-cli.py
+      - run: python3 scripts/test-shell.py
       - run: python3 scripts/test-attach.py
       - run: python3 scripts/test-bulk-output.py
       - run: python3 scripts/test-concurrency.py
@@ -36,6 +40,7 @@ jobs:
       - name: Verify release binary
         run: |
           python3 scripts/test-macos-cli.py
+          python3 scripts/test-shell.py
           python3 scripts/test-attach.py
           python3 scripts/test-bulk-output.py
           python3 scripts/test-concurrency.py
