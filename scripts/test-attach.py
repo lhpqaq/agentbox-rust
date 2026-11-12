@@ -14,7 +14,7 @@ import termios
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-BIN = ROOT / 'target/debug/agentbox'
+BIN = pathlib.Path(os.environ.get('AGENTBOX_TEST_BIN', ROOT / 'target/debug/agentbox')).resolve()
 
 
 class Attached:

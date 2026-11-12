@@ -35,6 +35,7 @@ cargo build --locked
 python3 scripts/test-macos-cli.py
 python3 scripts/test-attach.py
 python3 scripts/test-bulk-output.py
+python3 scripts/test-concurrency.py
 AGENTBOX_ALLOW_SOCKET_TESTS=1 cargo test --locked --test local_e2e -- --ignored --test-threads=1
 cargo build --locked --release
 bash scripts/package.sh
@@ -60,3 +61,19 @@ AgentBox is not a sandbox. A broker/machine restart does not restore running
 processes. Raw input permanently disables structured run for that session.
 Output retention is finite. Native attach streams a transcript rather than
 reconstructing a full screen and filters terminal device/clipboard controls.
+
+## Testing the optimized binary
+
+The Python CLI/PTY/bulk/concurrency scripts accept `AGENTBOX_TEST_BIN` so the same
+scenarios can exercise the release artifact rather than only a debug build:
+
+```sh
+AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-macos-cli.py
+AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-attach.py
+AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-bulk-output.py
+AGENTBOX_TEST_BIN="$PWD/target/release/agentbox" python3 scripts/test-concurrency.py
+```
+
+Local 0.3.0 release checks passed the CLI, shared PTY, bulk-output and concurrent-client suites. The 9 MiB release check took about 8 seconds in one local run.
+`cargo install --path . --locked --offline --root TEMP_DIRECTORY` was also tested
+in an isolated prefix; the installed executable reported `agentbox 0.3.0`.

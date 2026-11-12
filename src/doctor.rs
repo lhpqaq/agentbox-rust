@@ -2,22 +2,23 @@
 use crate::{config, rpc::RpcClient, VERSION};
 use serde_json::{json, Value};
 use std::{
+    ffi::OsStr,
     fs,
     os::unix::fs::{FileTypeExt, PermissionsExt},
-    path::Path,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
 pub fn report(home: &Path) -> Value {
     let mut checks = Vec::new();
     let mut steps = Vec::new();
-    let shell_ok =
-        fs::metadata("/bin/bash").is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
-    checks.push(check(
-        "shell",
-        shell_ok,
-        "/bin/bash must exist and be executable",
-    ));
+    let configured_shell = std::env::var_os("AGENTBOX_BASH").unwrap_or_else(|| "bash".into());
+    let resolved_shell = resolve_shell(&configured_shell, std::env::var_os("PATH").as_deref());
+    checks.push(check("shell", resolved_shell.is_some(),
+        "Configured AGENTBOX_BASH (default bash) must resolve to an executable file in the current environment"));
+    if resolved_shell.is_none() {
+        steps.push("Check AGENTBOX_BASH and PATH. Prefer an absolute Bash path when sessions use different working directories.");
+    }
     let home_ok = config::private_dir_existing(home).is_ok();
     checks.push(check(
         "state_directory",
@@ -62,7 +63,7 @@ pub fn report(home: &Path) -> Value {
                     "Broker reports whether the journal is healthy",
                 ));
                 if !version_matches {
-                    steps.push("The running broker has a different version. Finish or detach from work before planning a broker restart; restarting terminates live shells.");
+                    steps.push("The running broker has a different version. Finish live work before planning a broker restart; detaching does not protect shells from a broker restart.");
                 }
                 // Whitelist fields: diagnostics must never echo arbitrary broker content.
                 broker = json!({"version":status["version"],"pid":status["broker_pid"],"uptime_seconds":status["uptime"],"live_sessions":status["session_count"],"journal_healthy":status["journal_healthy"]});
@@ -90,9 +91,25 @@ pub fn report(home: &Path) -> Value {
     }
     let ready = checks.iter().all(|c| c["ok"] == true);
     json!({"ready":ready,"client_version":VERSION,"platform":std::env::consts::OS,"architecture":std::env::consts::ARCH,
-        "home":home,"checks":checks,"broker":broker,"next_steps":steps,
+        "home":home.to_string_lossy(),"shell":{"configured":configured_shell.to_string_lossy(),"resolved":resolved_shell.map(|p|p.to_string_lossy().into_owned()),"environment":"current client environment; an already-running broker may have inherited different settings"},"checks":checks,"broker":broker,"next_steps":steps,
         "note":"This diagnosis is read-only. It does not test shell execution or validate an SSH connection."})
 }
+fn resolve_shell(command: &OsStr, path: Option<&OsStr>) -> Option<PathBuf> {
+    let executable = |p: &Path| {
+        fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    };
+    let command = Path::new(command);
+    if command.as_os_str().is_empty() {
+        return None;
+    }
+    if command.components().count() > 1 || command.is_absolute() {
+        return executable(command).then(|| command.to_owned());
+    }
+    std::env::split_paths(path?)
+        .map(|dir| dir.join(command))
+        .find(|candidate| executable(candidate))
+}
+
 fn check(name: &str, ok: bool, detail: &str) -> Value {
     json!({"name":name,"ok":ok,"detail":detail})
 }
@@ -100,6 +117,21 @@ fn check(name: &str, ok: bool, detail: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn configured_shell_resolution_checks_path_and_executable_permissions() {
+        let temp = tempfile::tempdir().unwrap();
+        let shell = temp.path().join("custom-bash");
+        fs::write(&shell, "fixture").unwrap();
+        fs::set_permissions(&shell, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(resolve_shell(shell.as_os_str(), None).is_none());
+        fs::set_permissions(&shell, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(resolve_shell(shell.as_os_str(), None).unwrap(), shell);
+        assert_eq!(
+            resolve_shell(OsStr::new("custom-bash"), Some(temp.path().as_os_str())).unwrap(),
+            shell
+        );
+        assert!(resolve_shell(OsStr::new("missing-bash"), Some(temp.path().as_os_str())).is_none());
+    }
     #[test]
     fn missing_home_is_not_created() {
         let temp = tempfile::tempdir().unwrap();

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Exercise the built CLI against a disposable broker; no browser or HTTP server."""
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-BIN = ROOT / 'target/debug/agentbox'
+BIN = pathlib.Path(os.environ.get('AGENTBOX_TEST_BIN', ROOT / 'target/debug/agentbox')).resolve()
 
 
 def main():
