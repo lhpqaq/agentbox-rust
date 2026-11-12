@@ -39,7 +39,7 @@ agentbox-here --var PROJECT_NOTE --var TARGETS --function my_status \
   --option autocd -- --home "$PWD/.agentbox"
 ```
 
-这条 `eval` 只定义当前 shell 的 `agentbox-here` 函数。若希望以后自动提供此函数，
+这条 `eval` 定义当前 shell 的 `agentbox-here` 函数，并记录生成它的可执行文件路径；即使用绝对路径调用未安装的构建产物，也无需额外修改 PATH。若希望以后自动提供此函数，
 可以自行把它加到 `.zshrc`，AgentBox 不会自动改写配置。
 
 - 默认复制当前普通别名、全局别名和后缀别名；`--no-aliases` 可关闭。
@@ -52,7 +52,13 @@ agentbox-here --var PROJECT_NOTE --var TARGETS --function my_status \
   `autocd`、`extendedglob`。启动身份等不可复制选项会拒绝。
 - `--` 后传给新建 `attach`，例如 `--home`、`--cwd`、`--login`。
 
-新 shell 先加载配置和插件，再导入选定状态，因此临时定义可以覆盖启动文件中的
+新 shell 先加载配置和插件，再导入选定状态。客户端会立即连接，因此启动脚本
+需要输入时可以直接回答，不会因为等待输入而阻塞整个 broker。会话元数据
+`shell.state_import_requested` 表示请求了导入，`shell.state_imported` 只有在导入
+真正完成后才会变成 `true`；`create` 返回会话 ID 不等于配置已加载完成。导入失败
+会关闭新会话，`attach` 返回错误，可通过保留输出查原因。
+
+临时定义可以覆盖启动文件中的
 同名定义。状态通过认证本地 socket 传入，临时文件只允许本人读取，读取/导入后
 清理，源代码和变量值不写入会话元数据。`--state-file` 是底层入口，接受本人拥有、
 权限私密的 UTF-8 Zsh 源文件，最多 128 KiB；它会执行文件中的代码，应只传入

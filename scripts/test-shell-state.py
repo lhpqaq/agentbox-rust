@@ -7,6 +7,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -23,13 +24,15 @@ def main():
         user = base / 'user'
         user.mkdir()
         home = base / 'state'
+        venv = base / 'venv'
+        subprocess.run([sys.executable, '-m', 'venv', '--without-pip', str(venv)], check=True)
         zsh = shutil.which('zsh')
         assert zsh
         (user / '.zshenv').write_text('RC_ORDER=env\n')
         (user / '.zprofile').write_text('RC_ORDER+=:profile\n')
-        (user / '.zshrc').write_text("RC_ORDER+=:rc\nPROMPT='CHILD> '\nalias local_alias='print rc-alias'\nsetopt autocd\nunsetopt extendedglob\nexport RESTORE_ME=changed_by_rc\n")
+        (user / '.zshrc').write_text("RC_ORDER+=:rc\nPROMPT='CHILD> '\nalias local_alias='print rc-alias'\nsetopt autocd\nunsetopt extendedglob\nexport RESTORE_ME=changed_by_rc\nexport PATH=/usr/bin:/bin\n")
         (user / '.zlogin').write_text('RC_ORDER+=:login\n')
-        env = {**os.environ, 'HOME':str(user),'ZDOTDIR':str(user),'PATH':str(BIN.parent)+os.pathsep+os.environ['PATH'], 'SHELL':zsh,
+        env = {**os.environ, 'HOME':str(user),'ZDOTDIR':str(user),'PATH':os.environ['PATH'], 'SHELL':zsh,
                'PROMPT':'PARENT> ', 'skip_global_compinit':'1', 'LC_ALL': os.environ.get('AGENTBOX_TEST_LOCALE', 'en_US.UTF-8' if os.uname().sysname == 'Darwin' else 'C.UTF-8')}
         parent = module.Attached(home, env=env, argv=[zsh, '-f', '-i'])
         def cli(*args):
@@ -38,11 +41,11 @@ def main():
             return json.loads(p.stdout)
         try:
             parent.until(b'PARENT>')
-            setup = f'''source {ROOT / 'shell/integration.zsh'}; SNAP_TEXT='space 中文 $quoted'; export RESTORE_ME='from parent'; typeset -a SNAP_ARRAY=('one two' three); typeset -A SNAP_MAP=(key 'value with spaces'); snap_function() {{ print -r -- "FUNC:$SNAP_TEXT"; }}; alias local_alias='print LOCAL_ALIAS'; alias -g AB_GLOBAL='| cat'; alias -s abtxt=cat; unsetopt autocd; setopt extendedglob; print SETUP_DONE'''
+            setup = f'''source {venv / 'bin/activate'}; eval "$(\"{BIN}\" shell-init zsh)"; SNAP_TEXT='space 中文 $quoted'; export RESTORE_ME='from parent'; typeset -a SNAP_ARRAY=('one two' three); typeset -A SNAP_MAP=(key 'value with spaces'); snap_function() {{ print -r -- "FUNC:$SNAP_TEXT"; }}; alias local_alias='print LOCAL_ALIAS'; alias -g AB_GLOBAL='| cat'; alias -s abtxt=cat; unsetopt autocd; setopt extendedglob; print SETUP_DONE'''
             parent.send(setup.encode()+b'\r')
             parent.until(b'SETUP_DONE\r\n')
             start=len(parent.output)
-            parent.send(f'agentbox-here --var SNAP_TEXT --var SNAP_ARRAY --var SNAP_MAP --function snap_function --export RESTORE_ME --option autocd --option extendedglob -- --login --home {home}\r'.encode())
+            parent.send(f'agentbox-here --var SNAP_TEXT --var SNAP_ARRAY --var SNAP_MAP --function snap_function --export RESTORE_ME --export PATH --export VIRTUAL_ENV --option autocd --option extendedglob -- --login --home {home}\r'.encode())
             parent.until(b'AgentBox session:',start=start)
             parent.until(b'CHILD>',start=start)
             sid=re.search(rb'AgentBox session: ([0-9a-f]{32})',parent.output[start:]).group(1).decode()
@@ -52,6 +55,9 @@ def main():
             parent.until('FUNC:space 中文 $quoted'.encode(),start=start)
             parent.until(b'LOCAL_ALIAS\r\n',start=start)
             parent.until(b'ALIASES:| cat:cat\r\n',start=start)
+            start=len(parent.output)
+            parent.send(b"python -c 'import sys; print(\"VENV_PREFIX:\" + sys.prefix)'\r")
+            parent.until(('VENV_PREFIX:' + str(venv)).encode(),start=start)
             assert not list((home/'runtime').glob('.zsh-state-*')), 'private import files should be removed after import'
             sessions=cli('sessions')
             session=next(s for s in sessions if s['id']==sid)
@@ -79,9 +85,14 @@ def main():
                 result=subprocess.run([str(BIN),'--home',str(home),'create',label,'--shell',zsh,
                     '--inherit-env','--state-file',str(state_file)],env=case_env,capture_output=True,text=True,timeout=15)
                 if expected is None:
-                    assert result.returncode != 0,(label,result.stdout,result.stderr)
-                    failed=next(s for s in cli('sessions') if s['name']==label)
-                    assert failed['status']=='closed' and failed['shell']['state_imported'] is False
+                    assert result.returncode == 0,(label,result.stdout,result.stderr)
+                    deadline=time.monotonic()+5
+                    while True:
+                        failed=next(s for s in cli('sessions') if s['name']==label)
+                        if failed['status']=='closed': break
+                        assert time.monotonic()<deadline,(label,failed)
+                        time.sleep(.03)
+                    assert failed['shell']['state_imported'] is False
                 else:
                     assert result.returncode==0,(label,result.stdout,result.stderr)
                     case_id=result.stdout.strip()
@@ -115,6 +126,44 @@ def main():
                 {'.zshrc':'typeset -r CASE_VALUE=old\n'},None)
             print('PASS: non-login/returning startup, unset/redirected ZDOTDIR and disabled RCS preserve intended state',flush=True)
             print('PASS: failed, malformed and readonly-conflicting imports close the new shell and clean private files',flush=True)
+            prompt_user=base/'prompt-user'
+            prompt_user.mkdir()
+            (prompt_user/'.zshrc').write_text("read -r 'SETUP_ANSWER?CONFIG_QUESTION> '\nPROMPT='AFTER_SETUP> '\n")
+            prompt_state=base/'prompt-state.zsh'
+            prompt_state.write_text('AFTER_IMPORT=kept\n')
+            prompt_state.chmod(0o600)
+            prompt_client=module.Attached(home,options=['--shell',zsh,'--state-file',str(prompt_state)],
+                env={**env,'HOME':str(prompt_user),'ZDOTDIR':str(prompt_user)})
+            try:
+                prompt_client.until(b'CONFIG_QUESTION>')
+                prompt_id=re.search(rb'AgentBox session: ([0-9a-f]{32})',prompt_client.output).group(1).decode()
+                before=time.monotonic()
+                current=next(s for s in cli('sessions') if s['id']==prompt_id)
+                assert time.monotonic()-before<2, 'startup prompt must not block the broker'
+                assert current['shell']['state_imported'] is False
+                prompt_client.send(b'accepted\r')
+                prompt_client.until(b'AFTER_SETUP>')
+                start=len(prompt_client.output)
+                prompt_client.send(b'print -r -- "PROMPT_STATE:$SETUP_ANSWER:$AFTER_IMPORT"\r')
+                prompt_client.until(b'PROMPT_STATE:accepted:kept\r\n',start=start)
+                assert next(s for s in cli('sessions') if s['id']==prompt_id)['shell']['state_imported'] is True
+                prompt_client.send(b'exit\r')
+                prompt_client.finished()
+            finally:
+                prompt_client.dispose()
+            print('PASS: startup prompts are interactive during pending import and do not block broker requests',flush=True)
+            pending_client=module.Attached(home,options=['--shell',zsh,'--state-file',str(prompt_state)],
+                env={**env,'HOME':str(prompt_user),'ZDOTDIR':str(prompt_user)})
+            try:
+                pending_client.until(b'CONFIG_QUESTION>')
+                pending_id=re.search(rb'AgentBox session: ([0-9a-f]{32})',pending_client.output).group(1).decode()
+                cli('close',pending_id)
+                pending_client.finished(expected_code=1)
+                assert not list((home/'runtime').glob('.zsh-state-*'))
+            finally:
+                pending_client.dispose()
+            print('PASS: closing a pending import restores the client terminal, reports incomplete import and removes private files',flush=True)
+
         finally:
             parent.dispose()
             if home.exists(): cli('stop','--shutdown-sessions','--broker-only')

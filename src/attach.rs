@@ -293,7 +293,15 @@ pub fn run(
         .context("Invalid replay cursor")?;
     let mut after = if no_replay { through } else { 0 };
     let mut closed = snapshot["session"]["status"] == "closed";
+    let mut import_pending = snapshot["session"]["shell"]["state_import_requested"] == true
+        && snapshot["session"]["shell"]["state_imported"] != true;
     eprintln!("AgentBox session: {session_id}\nCtrl-] detaches and keeps the shell running; exit closes the shell.\nBoth operators share keystrokes; take turns typing.");
+    if snapshot["session"]["shell"]["state_import_requested"] == true
+        && snapshot["session"]["shell"]["state_imported"] != true
+        && !closed
+    {
+        eprintln!("Zsh state import is pending while startup files load; answer any startup prompts in this terminal.");
+    }
     if read_only {
         eprintln!("READ ONLY: keyboard input and terminal resizing are disabled; Ctrl-] detaches.");
     }
@@ -322,6 +330,11 @@ pub fn run(
                 output.write_all(&filter.push(event["data"]["text"].as_str().unwrap_or("")))?;
             } else if event["type"] == "session_closed" {
                 closed = true;
+            }
+            if event["type"] == "session_updated"
+                && event["data"]["shell"]["state_imported"] == true
+            {
+                import_pending = false;
             }
         }
         output.flush()?;
@@ -385,6 +398,9 @@ pub fn run(
     // Restore local tty settings before printing status in cooked mode.
     drop(output);
     drop(_terminal);
+    if closed && import_pending {
+        bail!("Shell closed before Zsh state import completed; inspect this session's output for startup/import errors");
+    }
     eprintln!(
         "\n{} session {session_id}",
         if closed { "Closed" } else { "Detached from" }

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-11-13
+
+- New `attach` sessions default to the caller’s native Bash/Zsh, with normal startup files, prompts, editing modes and plugins. `--managed` preserves the earlier clean Bash mode; `create` still defaults to managed Bash for structured commands.
+- Native sessions inherit a complete current-client environment snapshot, independent of stale broker variables. Added `--shell`, `--login`, `--no-rc`, `--env`, `--inherit-env` and `--broker-env`. Reconnect never overwrites live state.
+- Optional `shell-init zsh` defines `agentbox-here`: copy aliases and selected ordinary variables, arrays, maps, functions, exported values and on/off options into a new persistent Zsh. No personal dotfiles are modified. Private import files are consumed/cleaned and state values are not journaled as metadata.
+- Native startup remains interactive while state import is pending. Configuration prompts can be answered; other broker requests stay responsive. Import success is explicitly reported in session metadata; failure closes only the new shell.
+- HTTP/MCP accept native shell and environment creation parameters. Shared RPC capability checks prevent old brokers from silently ignoring new creation settings. Native sessions use input/read and refuse structured run.
+- Added cross-platform PTY tests for native startup, state transfer, login/ZDOTDIR behavior, failed imports, environment isolation and reconnect. Real Oh My Zsh, autosuggestions and syntax-highlighting fixtures are pinned in CI.
+
+Upgrade: existing brokers/shells are not restarted automatically. Use a separate `--home` to try new functionality while older sessions continue, or finish old work before deliberately restarting.
+
 ## 0.3.0 — 2026-11-12
 
 ### Shared terminal workflows

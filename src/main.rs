@@ -17,7 +17,7 @@ use std::{
 #[command(
     name = "agentbox",
     version,
-    about = "Local persistent Bash PTY workspace (Rust)"
+    about = "Local persistent Bash/Zsh PTY workspace (Rust)"
 )]
 struct Cli {
     #[arg(long, global = true)]
@@ -157,7 +157,10 @@ fn print_session_table(records: &[Value]) {
         println!("No matching sessions.");
         return;
     }
-    println!("{:<32}  {:<12}  NAME / DIRECTORY", "SESSION ID", "STATE");
+    println!(
+        "{:<32}  {:<12}  {:<12}  NAME / DIRECTORY",
+        "SESSION ID", "STATE", "SHELL"
+    );
     for record in records {
         // Names/paths may contain terminal controls. Render them visibly without
         // allowing a session name to clear the screen or forge another row.
@@ -168,13 +171,33 @@ fn print_session_table(records: &[Value]) {
                 .escape_debug()
                 .to_string()
         };
+        let shell = match record["shell"]["mode"].as_str() {
+            Some("native") => record["shell"]["executable"]
+                .as_str()
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .and_then(|p| p.to_str())
+                .unwrap_or("native"),
+            Some("managed") => "bash/managed",
+            _ => "legacy",
+        }
+        .escape_debug()
+        .to_string();
+        let state = if record["status"] != "closed"
+            && record["shell"]["state_import_requested"] == true
+            && record["shell"]["state_imported"] != true
+        {
+            "importing".to_owned()
+        } else {
+            cell("status")
+        };
         println!(
-            "{:<32}  {:<12}  {}",
+            "{:<32}  {:<12}  {:<12}  {}",
             cell("id"),
-            cell("status"),
+            state,
+            shell,
             cell("name")
         );
-        println!("{:48}{}", "", cell("cwd"));
+        println!("{:62}{}", "", cell("cwd"));
     }
 }
 fn validate_timeout(t: f64) -> Result<Duration> {
@@ -253,7 +276,17 @@ fn run() -> Result<()> {
             read_only,
             shell_options,
         } => attach::run(home, session_id, cwd, no_replay, read_only, shell_options)?,
-        Commands::ShellInit { shell: _ } => print!("{}", include_str!("../shell/integration.zsh")),
+        Commands::ShellInit { shell: _ } => {
+            let binary = std::env::current_exe()?;
+            let binary = binary
+                .to_str()
+                .context("Shell integration requires a UTF-8 executable path")?;
+            println!(
+                "typeset -g __agentbox_binary='{}'",
+                binary.replace('\'', "'\\''")
+            );
+            print!("{}", include_str!("../shell/integration.zsh"));
+        }
         Commands::Doctor => {
             let report = agentbox::doctor::report(&home);
             print(&report)?;

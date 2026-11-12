@@ -95,7 +95,7 @@ agentbox-here() {
       done
       builtin print -r -- 'builtin true'
     ) >| "$__agentbox_file" || return
-    command agentbox attach --shell "$(builtin whence -p zsh)" --state-file "$__agentbox_file" --consume-state-file "${__agentbox_forward[@]}"
+    command "${__agentbox_binary:-agentbox}" attach --shell "$(builtin whence -p zsh)" --state-file "$__agentbox_file" --consume-state-file "${__agentbox_forward[@]}"
     __agentbox_result=$?
   } always {
     command rm -f -- "$__agentbox_file"

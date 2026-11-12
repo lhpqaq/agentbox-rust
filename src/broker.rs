@@ -224,6 +224,12 @@ impl Core {
                     .lock()
                     .map_err(|_| AbError::new(500, "Journal lock poisoned"))?;
                 match event {
+                    TerminalEvent::Imported { cwd } => {
+                        let mut s = db.session(&session_id)?;
+                        s["shell"]["state_imported"] = json!(true);
+                        s["cwd"] = json!(cwd);
+                        db.update_session(s, "session_updated")?;
+                    }
                     TerminalEvent::Output {
                         text,
                         command_id,
@@ -272,7 +278,6 @@ impl Core {
                 eprintln!("Journal failure: {e}; broker will stop sessions");
             }
         });
-        let importing = launch.zsh_state.is_some();
         match Terminal::spawn(
             TerminalSpec {
                 home: self.home.clone(),
@@ -287,7 +292,6 @@ impl Core {
             Ok(t) => {
                 let mut s = self.db()?.session(&id)?;
                 s["pid"] = json!(t.pid());
-                s["shell"]["state_imported"] = json!(importing);
                 self.db()?.update_session(s, "session_updated")?;
                 self.terminals.insert(id.clone(), t);
                 self.db()?.session(&id)
@@ -311,6 +315,9 @@ impl Core {
                     "Session reached 10000 durable request keys",
                 ));
             }
+        }
+        if self.db()?.session(id)?["shell"]["mode"] == "native" {
+            return Err(AbError::new(409, "Native Bash/Zsh sessions use input/read or attach. Structured run/wait requires a managed session (create without --shell)."));
         }
         if !self.terminal(id)?.is_idle() {
             return Err(AbError::new(409,"Session is busy or has untracked raw input. Use explicit input/interrupt or create a new session"));

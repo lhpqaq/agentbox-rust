@@ -33,6 +33,9 @@ pub struct TerminalSpec {
 }
 #[derive(Debug, Clone)]
 pub enum TerminalEvent {
+    Imported {
+        cwd: String,
+    },
     Ready {
         cwd: String,
     },
@@ -83,7 +86,7 @@ impl Terminal {
         let idle = Arc::new(AtomicBool::new(false));
         let closed = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = mpsc::channel();
-        let importing = spec.launch.zsh_state.is_some();
+        let native = spec.launch.native();
         let mut engine = Engine::spawn(spec, sink, idle.clone(), closed.clone())?;
         let pid = engine.child.id();
         let worker = thread::Builder::new()
@@ -96,6 +99,11 @@ impl Terminal {
             pid,
             worker: std::sync::Mutex::new(Some(worker)),
         };
+        // Native startup may ask for input (compinit, keychain, a plugin). Give
+        // clients the PTY immediately; state import completion is a later event.
+        if native {
+            return Ok(terminal);
+        }
         match ready_rx.recv_timeout(Duration::from_secs(8)) {
             Ok(Ok(())) => Ok(terminal),
             Ok(Err(e)) => {
@@ -104,9 +112,6 @@ impl Terminal {
             }
             Err(_) => {
                 let _ = terminal.close();
-                if importing {
-                    bail!("Zsh state import did not complete within 8 seconds; startup may be waiting for input or overriding ZDOTDIR. The new shell was closed; existing sessions were not changed.");
-                }
                 bail!("Shell did not become ready within 8 seconds")
             }
         }
@@ -703,9 +708,8 @@ PROMPT_COMMAND=__ab_prompt
                         bail!("Zsh state import failed with exit status {status}");
                     }
                     self.initialized = true;
-                    self.emit(TerminalEvent::State {
-                        status: "interactive".into(),
-                        cwd: Some(self.cwd.clone()),
+                    self.emit(TerminalEvent::Imported {
+                        cwd: self.cwd.clone(),
                     });
                 }
                 b"S" => {

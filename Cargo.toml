@@ -1,8 +1,8 @@
 [package]
 name = "agentbox"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
-description = "Local persistent Bash PTY workspace with HTTP and MCP interfaces"
+description = "Local persistent Bash/Zsh PTY workspace with HTTP and MCP interfaces"
 license = "MIT"
 
 [dependencies]
